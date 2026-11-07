@@ -65,9 +65,9 @@ object DragonWings {
 			val pos = player.getPosition(partial)
 			val bodyYaw = Mth.rotLerp(partial, player.yBodyRotO, player.yBodyRot)
 			val time = player.tickCount + partial
-			val airborne = !player.onGround()
-			val flap = if (airborne) sin(time * 0.55f) * 0.55f else sin(time * 0.12f) * 0.18f
-			val spread = if (player.isCrouching) 0.95f else 0.45f
+			// Always the same calm idle sway: no flapping while falling or flying, no folding while sneaking.
+			val flap = sin(time * 0.12f) * 0.18f
+			val spread = 0.45f
 			val light = lightAt(level, BlockPos.containing(pos.x, pos.y + 1.2, pos.z))
 
 			val pose = ctx.poseStack()
@@ -88,7 +88,7 @@ object DragonWings {
 				wing.y = 0f
 				wing.z = 0f
 				wing.yRot = yaw
-				wing.zRot = if (airborne) sin(time * 0.55f + 1f) * 0.12f else 0f
+				wing.zRot = 0f
 				wing.xRot = 0f
 				collector.submitModelPart(wing, pose, renderType, light, OverlayTexture.NO_OVERLAY, null, 0xFFFFFFFF.toInt(), null)
 			}
