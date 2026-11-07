@@ -283,6 +283,25 @@ class ParkourScreen(val room: LobbyRoom, private val fixedSeed: Long?) : GameScr
 			val a = (128 + 127 * sin(Theme.time * 2 + i)).toInt().coerceIn(40, 255)
 			g.fill(sx.toInt(), sy, sx.toInt() + 1, sy + 1, ColorUtil.withAlpha(0xFFFFFFFF.toInt(), a))
 		}
+		// Big moon and drifting clouds
+		val moonX = (width * 0.78f - camX * 0.02f).toInt()
+		val moonY = top + h / 6
+		g.fill(moonX - 9, moonY - 12, moonX + 9, moonY + 12, 0x30FFF2C8)
+		g.fill(moonX - 12, moonY - 9, moonX + 12, moonY + 9, 0x30FFF2C8)
+		g.fill(moonX - 7, moonY - 9, moonX + 7, moonY + 9, 0xFFFFF2C8.toInt())
+		g.fill(moonX - 9, moonY - 7, moonX + 9, moonY + 7, 0xFFFFF2C8.toInt())
+		g.fill(moonX - 3, moonY - 4, moonX, moonY - 1, 0xFFE8D8A8.toInt())
+		g.fill(moonX + 3, moonY + 2, moonX + 5, moonY + 4, 0xFFE8D8A8.toInt())
+		for (i in 0 until 7) {
+			val span = width + 120f
+			val cx = ((i * 211 + 37) % width - camX * (0.08f + i % 3 * 0.04f) - Theme.time * (3 + i % 3)).mod(span) - 60f
+			val cy = top + 10 + (i * 37) % (h / 3)
+			val w = 26 + (i * 13) % 30
+			val c = 0x30FFFFFF + ((i % 3) shl 24)
+			g.fill(cx.toInt(), cy + 4, cx.toInt() + w, cy + 10, c)
+			g.fill(cx.toInt() + w / 5, cy, cx.toInt() + w * 3 / 5, cy + 5, c)
+			g.fill(cx.toInt() + w / 2, cy + 2, cx.toInt() + w * 4 / 5, cy + 5, c)
+		}
 		// Two layers of rolling hills
 		for (layer in 0..1) {
 			val speed = if (layer == 0) 0.15f else 0.35f
@@ -292,6 +311,40 @@ class ParkourScreen(val room: LobbyRoom, private val fixedSeed: Long?) : GameScr
 				val wx = x + camX * speed
 				val hy = base + (sin(wx * 0.02f + layer * 2) * 8 + sin(wx * 0.007f) * 12).toInt()
 				g.fill(x, hy, x + 2, top + h, color)
+			}
+		}
+	}
+
+	/** Purely visual props on grass (no hitbox): picked from the tile position, so every racer sees the same. */
+	private fun drawDecoration(g: GuiGraphicsExtractor, tx: Int, ty: Int, x: Int, y: Int) {
+		val h = ((tx * 73856093) xor (ty * 19349663)).let { (it ushr 3) and 0xFF }
+		val sway = (sin(Theme.time * 2 + tx) * 1f).toInt()
+		when {
+			h < 60 -> { // grass tufts
+				val c = 0xFF9AE07A.toInt()
+				g.fill(x + 3, y - 3, x + 4, y, c); g.fill(x + 4 + sway, y - 5, x + 5 + sway, y, c); g.fill(x + 6, y - 3, x + 7, y, c)
+				g.fill(x + 11, y - 4, x + 12, y, c); g.fill(x + 12 + sway, y - 2, x + 13 + sway, y, c)
+			}
+			h < 90 -> { // flower
+				val petal = listOf(0xFFFF7EB6, 0xFFFFE066, 0xFF8EC5FF, 0xFFFFFFFF)[h % 4].toInt()
+				g.fill(x + 8, y - 6, x + 9, y, 0xFF5FB04A.toInt())
+				g.fill(x + 7 + sway, y - 9, x + 10 + sway, y - 6, petal)
+				g.fill(x + 8 + sway, y - 8, x + 9 + sway, y - 7, 0xFFFFB020.toInt())
+			}
+			h < 105 -> { // mushroom
+				g.fill(x + 5, y - 3, x + 7, y, 0xFFF3E9D2.toInt())
+				g.fill(x + 3, y - 6, x + 9, y - 3, 0xFFE0485A.toInt())
+				g.fill(x + 4, y - 5, x + 5, y - 4, 0xFFFFFFFF.toInt()); g.fill(x + 7, y - 6, x + 8, y - 5, 0xFFFFFFFF.toInt())
+			}
+			h < 115 -> { // little crystal
+				g.fill(x + 10, y - 7, x + 12, y, 0xFF8EE8FF.toInt())
+				g.fill(x + 9, y - 4, x + 10, y, 0xFF5CC8F0.toInt()); g.fill(x + 12, y - 5, x + 13, y, 0xFF5CC8F0.toInt())
+				g.fill(x + 10, y - 7, x + 11, y - 5, 0xFFE8FBFF.toInt())
+			}
+			h < 122 -> { // signpost
+				g.fill(x + 7, y - 10, x + 8, y, 0xFF8A5A34.toInt())
+				g.fill(x + 3, y - 11, x + 13, y - 6, 0xFFB07A48.toInt())
+				g.fill(x + 10, y - 9, x + 12, y - 8, 0xFF5A3A20.toInt()); g.fill(x + 4, y - 9, x + 9, y - 8, 0xFF5A3A20.toInt())
 			}
 		}
 	}
@@ -309,7 +362,20 @@ class ParkourScreen(val room: LobbyRoom, private val fixedSeed: Long?) : GameScr
 					if (grassTop) {
 						g.fill(x, y, x + TILE, y + 4, Theme.rainbow(tx * 0.03f, 0.45f, 1f))
 						g.fill(x, y + 4, x + TILE, y + 5, 0x40000000)
+						if (l.tile(tx, ty - 1) == ParkourLevel.EMPTY) drawDecoration(g, tx, ty, x, y)
 					}
+				}
+				ParkourLevel.PAD -> {
+					g.fill(x, y, x + TILE, y + TILE, if ((tx + ty) % 2 == 0) 0xFF6B4A8E.toInt() else 0xFF634486.toInt())
+					// Spring pad: coil + bouncing plate with an up arrow.
+					val squash = ((sin(Theme.time * 6 + tx) + 1) * 1.5f).toInt()
+					g.fill(x + 3, y - 3 + squash, x + 13, y + 1, 0xFF3A2A50.toInt())
+					for (i in 0 until 2) g.fill(x + 4, y - 2 + squash + i * 2, x + 12, y - 1 + squash + i * 2, 0xFFB0B8C8.toInt())
+					g.fill(x + 1, y - 6 + squash, x + 15, y - 3 + squash, 0xFFFFC94D.toInt())
+					g.fill(x + 1, y - 3 + squash, x + 15, y - 2 + squash, 0xFFD08A2E.toInt())
+					g.fill(x + 7, y - 13 + squash, x + 9, y - 8 + squash, 0xAAFFE38A.toInt())
+					g.fill(x + 5, y - 11 + squash, x + 11, y - 10 + squash, 0xAAFFE38A.toInt())
+					g.fill(x + 6, y - 12 + squash, x + 10, y - 11 + squash, 0xAAFFE38A.toInt())
 				}
 				ParkourLevel.SPIKE -> for (i in 0 until 4) {
 					val sx = x + i * 4

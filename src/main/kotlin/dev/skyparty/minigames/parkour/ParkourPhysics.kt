@@ -28,8 +28,11 @@ object ParkourPhysics {
 	const val MAX_FALL = 1536        // 6 px/step
 	const val JUMP_V = -1331         // ~3.4 tiles jump height
 	const val JUMP_CUT = 384         // releasing jump while rising caps upward speed
+	const val PAD_V = -1900           // jump pad launch, ~6.9 tiles high
 	const val COYOTE = 6             // steps you may still jump after leaving a ledge
 	const val BUFFER = 6             // steps a jump press is remembered before landing
+	/** Extra spike reach (2 px) in the generator's human check. */
+	const val HUMAN_PAD = 2 * FP
 
 	/** One step of player input. */
 	data class Input(val dir: Int, val jump: Boolean) {
@@ -53,8 +56,10 @@ object ParkourPhysics {
 		var buffer: Int = 0,
 		var jumpHeld: Boolean = false,
 		var facing: Int = 1,
+		/** Rising from a jump pad (jump release must not cut the launch). */
+		var padBoost: Boolean = false,
 	) {
-		fun copyState() = State(x, y, vx, vy, grounded, coyote, buffer, jumpHeld, facing)
+		fun copyState() = State(x, y, vx, vy, grounded, coyote, buffer, jumpHeld, facing, padBoost)
 	}
 
 	/** Advances [s] in place by one step. Returns whether the player died or crossed the finish line. */
@@ -87,7 +92,7 @@ object ParkourPhysics {
 			s.coyote = 0
 			s.grounded = false
 		}
-		if (!input.jump && s.vy < -JUMP_CUT) s.vy = -JUMP_CUT
+		if (!input.jump && !s.padBoost && s.vy < -JUMP_CUT) s.vy = -JUMP_CUT
 		s.jumpHeld = input.jump
 
 		s.vy = minOf(s.vy + GRAVITY, MAX_FALL)
@@ -116,10 +121,27 @@ object ParkourPhysics {
 			s.vy = 0
 		} else s.y = ny
 
+		// Jump pads: standing on one launches you (holding jump does not matter, releasing does not cut it).
+		if (s.grounded && onPad(level, s.x, s.y)) {
+			s.vy = if (margin) PAD_V * 92 / 100 else PAD_V
+			s.grounded = false
+			s.coyote = 0
+			s.buffer = 0
+			s.padBoost = true
+		}
+		if (s.vy >= 0) s.padBoost = false
+
 		if (s.y > level.height * TILE_FP) return Outcome.DIED
-		if (touchesHazard(level, s.x, s.y)) return Outcome.DIED
+		if (touchesHazard(level, s.x, s.y, if (margin) HUMAN_PAD else 0)) return Outcome.DIED
 		if (s.x + W_FP >= level.finishX * TILE_FP) return Outcome.FINISHED
 		return Outcome.NONE
+	}
+
+	/** Whether any tile right under the feet is a jump pad. */
+	fun onPad(level: ParkourLevel, x: Int, y: Int): Boolean {
+		val row = floorDiv(y + H_FP, TILE_FP)
+		for (tx in floorDiv(x, TILE_FP)..floorDiv(x + W_FP - 1, TILE_FP)) if (level.tile(tx, row) == ParkourLevel.PAD) return true
+		return false
 	}
 
 	fun collides(level: ParkourLevel, x: Int, y: Int): Boolean {
@@ -131,17 +153,20 @@ object ParkourPhysics {
 		return false
 	}
 
-	/** Spike hitbox: lower 10 px of the tile, inset 3 px horizontally (forgiving). */
-	fun touchesHazard(level: ParkourLevel, x: Int, y: Int): Boolean {
+	/**
+	 * Spike hitbox: lower 10 px of the tile, inset 3 px horizontally (forgiving). [pad] grows it on every side;
+	 * the generator's human check uses [HUMAN_PAD], so no course needs sub-pixel clearance over spikes.
+	 */
+	fun touchesHazard(level: ParkourLevel, x: Int, y: Int, pad: Int = 0): Boolean {
 		val tx0 = floorDiv(x, TILE_FP)
-		val tx1 = floorDiv(x + W_FP - 1, TILE_FP)
+		val tx1 = floorDiv(x + W_FP - 1 + pad, TILE_FP)
 		val ty0 = floorDiv(y, TILE_FP)
-		val ty1 = floorDiv(y + H_FP - 1, TILE_FP)
-		for (tx in tx0..tx1) for (ty in ty0..ty1) {
+		val ty1 = floorDiv(y + H_FP - 1 + pad, TILE_FP)
+		for (tx in floorDiv(x - pad, TILE_FP)..tx1) for (ty in ty0..ty1) {
 			if (level.tile(tx, ty) != ParkourLevel.SPIKE) continue
-			val hx0 = tx * TILE_FP + 3 * FP
-			val hx1 = (tx + 1) * TILE_FP - 3 * FP
-			val hy0 = ty * TILE_FP + 6 * FP
+			val hx0 = tx * TILE_FP + 3 * FP - pad
+			val hx1 = (tx + 1) * TILE_FP - 3 * FP + pad
+			val hy0 = ty * TILE_FP + 6 * FP - pad
 			val hy1 = (ty + 1) * TILE_FP
 			if (x < hx1 && x + W_FP > hx0 && y < hy1 && y + H_FP > hy0) return true
 		}

@@ -87,6 +87,7 @@ object ParkourSolver {
 		k = k shl 1 or (if (s.jumpHeld) 1L else 0L)
 		k = k shl 1 or (if (s.coyote > 0) 1L else 0L)
 		k = k shl 1 or (if (s.buffer > 0) 1L else 0L)
+		k = k shl 1 or (if (s.padBoost) 1L else 0L)
 		return k
 	}
 

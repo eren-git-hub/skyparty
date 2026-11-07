@@ -39,7 +39,8 @@ class ParkourLevel(val width: Int, val height: Int) {
 		return tiles[y * width + x]
 	}
 
-	fun solid(x: Int, y: Int) = tile(x, y) == SOLID
+	/** Solid for collision: ground blocks and jump pads. */
+	fun solid(x: Int, y: Int) = tile(x, y).let { it == SOLID || it == PAD }
 
 	fun set(x: Int, y: Int, t: Byte) {
 		if (x in 0 until width && y in 0 until height) tiles[y * width + x] = t
@@ -62,6 +63,8 @@ class ParkourLevel(val width: Int, val height: Int) {
 		const val EMPTY: Byte = 0
 		const val SOLID: Byte = 1
 		const val SPIKE: Byte = 2
+		/** Jump pad: solid, and landing on it launches you about twice as high as a jump. */
+		const val PAD: Byte = 3
 	}
 }
 

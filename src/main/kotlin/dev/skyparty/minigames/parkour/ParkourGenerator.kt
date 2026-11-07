@@ -14,7 +14,7 @@ object ParkourGenerator {
 	private val log = LoggerFactory.getLogger("Skyparty/Parkour")
 
 	const val HEIGHT = 18
-	const val SEGMENTS = 12
+	const val SEGMENTS = 16
 	const val PLATFORM = 3
 	private const val MIN_TOP = 5
 	private const val MAX_TOP = HEIGHT - 2
@@ -35,9 +35,12 @@ object ParkourGenerator {
 	 * Rare failures are re-rolled with a derived seed, so a given seed still always yields the same course.
 	 */
 	private fun buildVerified(seed: Long): ParkourLevel {
+		// Never hand out an unverified course: after 8 failed tries the difficulty is capped, and as a last resort
+		// the course is all flat ground (always beatable).
 		var last: ParkourLevel? = null
-		for (attempt in 0 until 8) {
-			val level = build(if (attempt == 0) seed else seed * 31 + attempt * 7919L)
+		for (attempt in 0 until 17) {
+			val maxD = when { attempt < 8 -> 5; attempt < 16 -> 2; else -> 0 }
+			val level = build(if (attempt == 0) seed else seed * 31 + attempt * 7919L, maxD)
 			val path = if (ParkourSolver.verifyCheckpoints(level)) ParkourSolver.solveCourse(level) else null
 			if (path != null && ParkourSolver.replay(level, path) > 0) {
 				level.retries += attempt
@@ -48,7 +51,7 @@ object ParkourGenerator {
 		return last!!
 	}
 
-	private fun build(seed: Long): ParkourLevel {
+	private fun build(seed: Long, maxD: Int = 5): ParkourLevel {
 		val rng = ParkourRng(ParkourRng(seed).nextLong())
 		val level = ParkourLevel(SEGMENTS * 26 + 40, HEIGHT)
 		// Start area: 6 columns of ground, the spawn checkpoint is on its last 3.
@@ -59,13 +62,13 @@ object ParkourGenerator {
 		level.checkpoints += ParkourLevel.Checkpoint(col - PLATFORM, exitRow)
 
 		for (i in 0 until SEGMENTS) {
-			val difficulty = 1 + (i * 4 + SEGMENTS / 2) / (SEGMENTS - 1)
+			val difficulty = minOf(maxD, 1 + (i * 4 + SEGMENTS / 2) / (SEGMENTS - 1))
 			var placed = false
 			var tries = 0
 			while (!placed) {
 				tries++
 				val d = when {
-					tries > MAX_TRIES -> 0
+					tries > MAX_TRIES || difficulty == 0 -> 0
 					tries > MAX_TRIES / 2 -> maxOf(1, difficulty - 1)
 					else -> difficulty
 				}
@@ -135,6 +138,17 @@ object ParkourGenerator {
 		}
 
 		fun pit(n: Int) { x += n }
+
+		/** Ground whose top tile is a jump pad. */
+		fun pad(n: Int, top: Int) {
+			val t = clampTop(top)
+			repeat(n) {
+				for (y in t until HEIGHT) put(x, y, ParkourLevel.SOLID)
+				put(x, t, ParkourLevel.PAD)
+				x++
+			}
+			lastTop = t
+		}
 
 		fun spikes(n: Int, top: Int) {
 			val t = clampTop(top)
@@ -245,8 +259,8 @@ object ParkourGenerator {
 			val len = r.range(7, 9)
 			val start = x
 			ground(len, entry)
-			block(start, start + len, entry - 6, entry - 4)
-			// Spikes inside the tunnel: you only have one tile of head room to hop over them.
+			block(start, start + len, entry - 7, entry - 5)
+			// Spikes inside the tunnel: two tiles of head room, so a short hop clears them.
 			spikeAt(start + 2, entry - 1)
 			spikeAt(start + len - 3, entry - 1)
 			if (d >= 5) spikeAt(start + len - 2, entry - 1)
@@ -303,6 +317,70 @@ object ParkourGenerator {
 			"...##....##..",
 			".............",
 			"GG.........GG",
+		),
+		// ---- jump pads
+		Template("padwall", 2, 5) { r, d ->
+			ground(2, entry)
+			pad(1, entry)
+			// A wall too tall to jump: only the pad gets you on top.
+			ground(r.range(2, 3), entry - r.range(4, 5))
+			if (d >= 3) spikes(1, lastTop)
+			ground(2, lastTop)
+		},
+		Template("padgap", 2, 5) { r, d ->
+			ground(2, entry)
+			pad(1, entry)
+			pit(r.range(5, 6 + d / 2))
+			ground(2, entry - r.range(0, 2))
+		},
+		Template("padspikes", 3, 5) { r, _ ->
+			ground(2, entry)
+			pad(1, entry)
+			spikes(r.range(4, 6), entry)
+			ground(2, entry)
+		},
+		Template("padchain", 4, 5) { r, _ ->
+			ground(1, entry)
+			var top = entry
+			repeat(r.range(2, 3)) {
+				pad(1, top)
+				pit(r.range(3, 4))
+				top = clampTop(top - r.range(-1, 1))
+			}
+			ground(2, top)
+		},
+		// ---- more jumping
+		Template("hopscotch", 2, 5) { r, d ->
+			ground(2, entry)
+			val low = clampTop(entry + 2)
+			repeat(r.range(3, 3 + d / 2)) {
+				spikes(1, low)
+				floating(1, entry - r.range(0, 1))
+				spikes(r.range(1, if (d >= 4) 2 else 1), low)
+			}
+			ground(2, entry)
+		},
+		Template("bridge", 1, 4) { r, d ->
+			ground(1, entry)
+			val len = r.range(6, 8)
+			val start = x
+			floating(len, entry)
+			if (d >= 2) spikeAt(start + len / 2, entry - 1)
+			if (d >= 3) spikeAt(start + 1, entry - 1)
+			pit(r.range(1, 2))
+			ground(2, entry + r.range(-1, 1))
+		},
+		ascii("pyramid", 2, 4,
+			"....GG....",
+			"...GGGG...",
+			"..GGGGGG..",
+			"GG^GGGG^GG",
+		),
+		ascii("ledges", 3, 5,
+			"......##.....GG",
+			"..##.........GG",
+			".............GG",
+			"GG^^^^^^^^^^^GG",
 		),
 	)
 }
