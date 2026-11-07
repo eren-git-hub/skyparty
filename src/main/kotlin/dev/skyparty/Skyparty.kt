@@ -64,6 +64,7 @@ object Skyparty : ClientModInitializer {
 
 		// Pets: 3D pet in the world + 2D pet on the scoreboard
 		LevelRenderEvents.COLLECT_SUBMITS.register(PetRenderer::render)
+		LevelRenderEvents.COLLECT_SUBMITS.register(dev.skyparty.cosmetics.DragonWings::render)
 		HudElementRegistry.attachElementAfter(
 			VanillaHudElements.SCOREBOARD,
 			Identifier.fromNamespaceAndPath(MOD_ID, "scoreboard_pet"),
