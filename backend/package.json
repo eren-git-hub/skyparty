@@ -1,0 +1,17 @@
+{
+	"name": "skyparty-api",
+	"version": "1.0.0",
+	"private": true,
+	"description": "Free Cloudflare Worker backend for the Skyparty mod (rooms + pet sync).",
+	"type": "module",
+	"scripts": {
+		"dev": "wrangler dev --port 8787 --ip 127.0.0.1 --var DEV_MODE:1 --var SESSION_SECRET:local-dev-secret-not-for-production",
+		"deploy": "wrangler deploy",
+		"typecheck": "tsc --noEmit"
+	},
+	"devDependencies": {
+		"@cloudflare/workers-types": "5.20261029.1",
+		"typescript": "5.9.3",
+		"wrangler": "4.155.0"
+	}
+}

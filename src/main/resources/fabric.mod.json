@@ -1,0 +1,28 @@
+{
+	"schemaVersion": 1,
+	"id": "skyparty",
+	"version": "${version}",
+	"name": "Skyparty",
+	"description": "The party mod for Hypixel SkyBlock: pets that grow with you, party games and your SkyBlock Wrapped.",
+	"authors": ["Skyparty"],
+	"license": "All-Rights-Reserved",
+	"environment": "client",
+	"entrypoints": {
+		"client": [
+			{
+				"adapter": "kotlin",
+				"value": "dev.skyparty.Skyparty"
+			}
+		]
+	},
+	"mixins": [
+		"skyparty.mixins.json"
+	],
+	"depends": {
+		"fabricloader": ">=0.20.1",
+		"minecraft": "~26.2",
+		"java": ">=25",
+		"fabric-api": "*",
+		"fabric-language-kotlin": "*"
+	}
+}

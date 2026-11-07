@@ -1,0 +1,21 @@
+{
+	"$schema": "./node_modules/wrangler/config-schema.json",
+	// The deployed URL becomes https://skyparty-api.<your-account>.workers.dev
+	"name": "skyparty-api",
+	"main": "src/index.ts",
+	"compatibility_date": "2026-10-01",
+	"workers_dev": true,
+	// Free plan: Durable Objects must be SQLite-backed (new_sqlite_classes).
+	"durable_objects": {
+		"bindings": [
+			{ "name": "ROOMS", "class_name": "Room" },
+			{ "name": "HUB", "class_name": "Hub" }
+		]
+	},
+	"migrations": [
+		{ "tag": "v1", "new_sqlite_classes": ["Room", "Hub"] }
+	],
+	// DEV_MODE must NEVER be set for a deployed worker. `npm run dev` passes it with --var only.
+	// SESSION_SECRET is set with: npx wrangler secret put SESSION_SECRET
+	"observability": { "enabled": false }
+}

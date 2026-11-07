@@ -1,0 +1,127 @@
+package dev.skyparty.ui.screens
+
+import dev.skyparty.config.ConfigManager
+import dev.skyparty.minigames.ui.GameColors
+import dev.skyparty.minigames.ui.GameScreen
+import dev.skyparty.module.Category
+import dev.skyparty.module.Module
+import dev.skyparty.module.ModuleManager
+import dev.skyparty.ui.Theme
+import dev.skyparty.ui.UiFocus
+import dev.skyparty.ui.elements.SettingElement
+import dev.skyparty.util.ColorUtil
+import net.minecraft.client.gui.GuiGraphicsExtractor
+import net.minecraft.client.input.CharacterEvent
+import net.minecraft.client.input.KeyEvent
+import net.minecraft.client.input.MouseButtonEvent
+
+/**
+ * Base for screens that show module cards with their settings (Settings, Pets). A module's settings are
+ * drawn with the shared [SettingElement]s; clicks, drags and typing are forwarded to them.
+ */
+abstract class ModuleSettingsScreen(title: String) : GameScreen(title) {
+	private val elements = HashMap<Module, List<SettingElement>>()
+	private val visible = mutableListOf<SettingElement>()
+	private var scroll = 0
+	private var maxScroll = 0
+	private var area = intArrayOf(0, 0, 0, 0)
+
+	private fun elementsOf(m: Module) = elements.getOrPut(m) { (m.settings + m.keybind).map { SettingElement.of(it) } }
+
+	/** Draws [modules] as cards in a scrollable column at (x, y, w, h). */
+	protected fun drawModules(g: GuiGraphicsExtractor, modules: List<Module>, x: Int, y: Int, w: Int, h: Int, mx: Int, my: Int) {
+		area = intArrayOf(x, y, w, h)
+		visible.clear()
+		g.enableScissor(x, y, x + w, y + h)
+		var cy = y - scroll
+		for (m in modules) {
+			val els = elementsOf(m)
+			val cardH = 30 + els.sumOf { it.height + 1 } + 4
+			g.fill(x, cy, x + w, cy + cardH, GameColors.CARD)
+			g.fill(x, cy, x + 2, cy + cardH, m.category.color)
+			g.text(font, "§l" + m.name, x + 8, cy + 5, Theme.TEXT, true)
+			g.text(font, font.plainSubstrByWidth(m.description, w - 70), x + 8, cy + 17, Theme.TEXT_DIM, false)
+			if (m.toggleable) {
+				val tx = x + w - 34
+				val ty = cy + 6
+				val on = m.enabled
+				g.fill(tx, ty, tx + 26, ty + 12, if (on) GameColors.GREEN else 0xFF3A3A46.toInt())
+				val knob = if (on) tx + 15 else tx + 1
+				g.fill(knob, ty + 1, knob + 10, ty + 11, Theme.TEXT)
+				if (my in y until y + h) clickArea(tx, ty, 26, 12) { m.toggle(); ConfigManager.save() }
+			}
+			var ey = cy + 30
+			for (e in els) {
+				e.x = x + 6
+				e.y = ey
+				e.width = w - 12
+				if (ey + e.height > y && ey < y + h) {
+					e.render(g, mx, my)
+					visible += e
+				}
+				ey += e.height + 1
+			}
+			cy += cardH + 6
+		}
+		g.disableScissor()
+		val total = cy + scroll - y
+		maxScroll = (total - h).coerceAtLeast(0)
+		scroll = scroll.coerceIn(0, maxScroll)
+		if (maxScroll > 0) {
+			val barH = (h * h / (h + maxScroll)).coerceAtLeast(12)
+			val barY = y + (h - barH) * scroll / maxScroll
+			g.fill(x + w + 2, barY, x + w + 4, barY + barH, ColorUtil.withAlpha(Theme.accent, 0xC0))
+		}
+	}
+
+	override fun onClickAnywhere(mx: Double, my: Double): Boolean {
+		val (x, y, w, h) = area
+		if (mx < x || mx >= x + w || my < y || my >= y + h) { UiFocus.focused = null; return false }
+		for (e in visible) if (e.mouseClicked(mx.toInt(), my.toInt(), 0)) return true
+		UiFocus.focused = null
+		return false
+	}
+
+	override fun mouseClicked(event: MouseButtonEvent, doubleClick: Boolean): Boolean {
+		if (event.button() != 0) for (e in visible) if (e.mouseClicked(event.x().toInt(), event.y().toInt(), event.button())) return true
+		return super.mouseClicked(event, doubleClick)
+	}
+
+	override fun mouseReleased(event: MouseButtonEvent): Boolean {
+		for (e in visible) e.mouseReleased(event.x().toInt(), event.y().toInt(), event.button())
+		ConfigManager.save()
+		return super.mouseReleased(event)
+	}
+
+	override fun mouseScrolled(mouseX: Double, mouseY: Double, scrollX: Double, scrollY: Double): Boolean {
+		scroll = (scroll - (scrollY * 20).toInt()).coerceIn(0, maxScroll)
+		return true
+	}
+
+	override fun keyPressed(event: KeyEvent): Boolean {
+		UiFocus.focused?.let { if (it.keyPressed(event.key())) return true }
+		return super.keyPressed(event)
+	}
+
+	override fun charTyped(event: CharacterEvent): Boolean {
+		if (!event.isAllowedChatCharacter()) return false
+		UiFocus.focused?.let { return it.charTyped(event.codepointAsString()) }
+		return false
+	}
+
+	override fun removed() {
+		UiFocus.focused = null
+		ConfigManager.save()
+		super.removed()
+	}
+}
+
+/** ⚙ Settings: every feature except the pets (those live on the Pets screen). */
+class SettingsScreen : ModuleSettingsScreen("Settings") {
+	override fun draw(g: GuiGraphicsExtractor, mouseX: Int, mouseY: Int, partialTick: Float) {
+		val top = header(g, "Settings", "features and interface")
+		val modules = ModuleManager.modules.filter { it.category != Category.PETS }
+		val w = minOf(320, width - 40)
+		drawModules(g, modules, width / 2 - w / 2, top + 8, w, height - top - 16, mouseX, mouseY)
+	}
+}
