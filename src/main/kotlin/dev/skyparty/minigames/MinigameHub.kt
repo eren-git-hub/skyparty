@@ -68,6 +68,10 @@ object MinigameHub {
 	/** Lobby shown in the hub: the code room if one is joined, otherwise the party room. */
 	val lobby: Lobby? get() = codeLobby ?: partyLobby
 
+	/** In a party but sitting alone in a code room (the hub then offers to go back to the party room). */
+	val aloneInCodeWithParty: Boolean
+		get() = partyLobby != null && codeLobby?.let { it.room.members.size <= 1 && it.active == null } == true
+
 	var invite: Invite? = null
 		private set
 
@@ -136,6 +140,12 @@ object MinigameHub {
 		if (current?.room?.id == wanted && (current == null || current.transport === Net.transport)) return
 		current?.let { leaveLobby(it) }
 		partyLobby = wanted?.let { joinLobby(it, isCode = false) }
+		// Joined a party while sitting alone in a code room: drop the code room so the party room takes over.
+		if (current == null && aloneInCodeWithParty) {
+			val code = codeLobby?.code
+			leaveCode()
+			Chat.info("§7Left your empty room $code – games now go to your party.")
+		}
 	}
 
 	private fun joinLobby(roomId: String, isCode: Boolean): Lobby {
@@ -219,6 +229,8 @@ object MinigameHub {
 			return
 		}
 		invite = null
+		// Accepting a party invite while alone in a code room: leave it, or the hub would keep showing the empty room.
+		if (inv.lobby === partyLobby && aloneInCodeWithParty) leaveCode()
 		inv.lobby.room.send("lobby.ready", JsonObject().apply { addProperty("inviteId", inv.inviteId) })
 		openHub()
 	}

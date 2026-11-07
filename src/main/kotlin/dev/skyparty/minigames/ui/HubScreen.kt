@@ -173,10 +173,17 @@ class HubScreen : GameScreen("Skyparty Games") {
 				clickArea(ix, cy, cw, 16) { MinigameHub.copyCode() }
 				if (hover) tooltip("Click to copy. Friends type /sp games join $code")
 				cy += 20
-				val bw = (iw - 4) / 2
-				button(g, ix, cy, bw, 13, "New code", mx, my) { MinigameHub.createCode() }
-				button(g, ix + bw + 4, cy, bw, 13, "Leave", mx, my, color = GameColors.RED) { MinigameHub.leaveCode() }
-				cy += 17
+				if (MinigameHub.aloneInCodeWithParty) {
+					// Nobody else is here, but you have a party: make the way back obvious.
+					button(g, ix, cy, iw, 14, "◀ Back to party room", mx, my, color = GameColors.GREEN,
+						hint = "Your party isn't in this room. Leave it to play with your party.") { MinigameHub.leaveCode() }
+					cy += 18
+				} else {
+					val bw = (iw - 4) / 2
+					button(g, ix, cy, bw, 13, "New code", mx, my) { MinigameHub.createCode() }
+					button(g, ix + bw + 4, cy, bw, 13, "Leave", mx, my, color = GameColors.RED) { MinigameHub.leaveCode() }
+					cy += 17
+				}
 			} else {
 				g.text(font, "Party room", ix, cy, Theme.TEXT, false)
 				cy += 11

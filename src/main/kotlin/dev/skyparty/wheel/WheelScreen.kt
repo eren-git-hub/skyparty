@@ -121,13 +121,13 @@ class WheelScreen : Screen(Component.literal("Decision Wheel")) {
 				g.text(font, text, x, 6, Theme.TEXT, true)
 			}
 			WheelSession.Mode.PARTY -> {
-				x = headerButton(x, "New room", 0) { createRoom() }
+				x = headerButton(x, newRoomLabel(), 0) { createRoom() }
 				val text = "§a● §fParty room §7(${PartyTracker.members.size})"
 				x -= font.width(text) + 6
 				g.text(font, text, x, 6, Theme.TEXT, true)
 			}
 			WheelSession.Mode.LOCAL -> {
-				x = headerButton(x, "New room", 1) { createRoom() }
+				x = headerButton(x, newRoomLabel(), 1) { createRoom() }
 				val text = "§8● §7Local"
 				x -= font.width(text) + 6
 				g.text(font, text, x, 6, Theme.TEXT, true)
@@ -135,7 +135,20 @@ class WheelScreen : Screen(Component.literal("Decision Wheel")) {
 		}
 	}
 
+	/** "New room" needs a second click within 3 s, so a stray click never throws you out of your room. */
+	private var confirmNewRoomUntil = 0L
+
+	private fun newRoomLabel() = if (System.currentTimeMillis() < confirmNewRoomUntil) "Sure? Click again" else "New room"
+
+	/** The result already sent to party chat (one message per result). */
+	private var sentSerial = -1
+
 	private fun createRoom() {
+		if (System.currentTimeMillis() >= confirmNewRoomUntil) {
+			confirmNewRoomUntil = System.currentTimeMillis() + 3000
+			return
+		}
+		confirmNewRoomUntil = 0L
 		val code = WheelSession.createRoom()
 		minecraft.keyboardHandler.clipboard = code
 		showToast("Room $code created – code copied")
@@ -308,7 +321,9 @@ class WheelScreen : Screen(Component.literal("Decision Wheel")) {
 		buttons += Button(x, y, spinW, 18, spinLabel, WheelSession.canSpin, 2) { doSpin() }
 		x += spinW + 6
 		if (showParty) {
-			buttons += Button(x, y, partyW, 18, "Send to party", true, 1) {
+			val sent = sentSerial == WheelSession.resultSerial
+			buttons += Button(x, y, partyW, 18, if (sent) "Sent ✔" else "Send to party", !sent, 1) {
+				sentSerial = WheelSession.resultSerial
 				WheelSession.sendResultToParty()
 				showToast("Sent to party chat")
 			}
@@ -542,6 +557,7 @@ class WheelScreen : Screen(Component.literal("Decision Wheel")) {
 	override fun mouseClicked(event: MouseButtonEvent, doubleClick: Boolean): Boolean {
 		val mx = event.x().toInt()
 		val my = event.y().toInt()
+		if (dev.skyparty.util.FocusGuard.ignoreClicks) return true
 		if (event.button() == 0) {
 			buttons.firstOrNull { it.hit(mx, my) }?.let { b ->
 				if (b.enabled) {

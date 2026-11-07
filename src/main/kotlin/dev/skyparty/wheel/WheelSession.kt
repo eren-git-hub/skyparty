@@ -117,7 +117,17 @@ object WheelSession {
 		PartyRoom.demand { DecisionWheel.enabled && DecisionWheel.autoParty.value }
 		PartyRoom.on("wheel.") { if (codeRoom == null && DecisionWheel.autoParty.value) handle(it) }
 		PartyRoom.roomChanged += { onRoomJoined() }
-		PartyTracker.listeners += { if (codeRoom == null) announcedHost = null }
+		PartyTracker.listeners += {
+			val code = codeRoom
+			if (code == null) announcedHost = null
+			else if (PartyTracker.inParty && code.members.size <= 1 && DecisionWheel.autoParty.value) {
+				// Alone in a code room but now in a party: switch to the party room instead.
+				leaveCode()
+				Chat.info("§7Left your empty wheel room – the wheel now uses your party.")
+				PartyRoom.sync()
+				onRoomJoined()
+			}
+		}
 		net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents.END_CLIENT_TICK.register(::tick)
 		WheelCommands.init()
 	}

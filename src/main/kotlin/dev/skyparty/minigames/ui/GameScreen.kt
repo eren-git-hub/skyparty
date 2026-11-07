@@ -69,6 +69,8 @@ abstract class GameScreen(title: String) : Screen(Component.literal(title)) {
 	open fun onClickAnywhere(mx: Double, my: Double): Boolean = false
 
 	override fun mouseClicked(event: MouseButtonEvent, doubleClick: Boolean): Boolean {
+		// The click that refocuses the window (after Alt+Tab) must not press a button.
+		if (dev.skyparty.util.FocusGuard.ignoreClicks) return true
 		if (event.button() == 0) {
 			hits.lastOrNull { it.contains(event.x(), event.y()) }?.let {
 				it.action()

@@ -133,6 +133,7 @@ object Skyparty : ClientModInitializer {
 		while (openGuiKey.consumeClick()) {
 			if (mc.gui.screen() == null) mc.gui.setScreen(HubScreen())
 		}
+		dev.skyparty.util.FocusGuard.tick(mc)
 		ModuleManager.tick(mc)
 		PetData.tick(mc)
 		PetController.tick(mc)
