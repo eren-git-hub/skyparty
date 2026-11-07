@@ -48,13 +48,13 @@ object CatEars {
 		fun add(name: String, cubes: CubeListBuilder) = mesh.root.addOrReplaceChild(name, cubes, PartPose.ZERO)
 		// A pointy ear from stacked, narrowing boxes (origin = ear base center).
 		add("ear", CubeListBuilder.create().texOffs(0, 0)
-			.addBox(-1.5f, 0f, -0.5f, 3f, 1f, 1f)
-			.addBox(-1.25f, 1f, -0.5f, 2.5f, 1f, 1f)
-			.addBox(-0.9f, 2f, -0.5f, 1.8f, 0.8f, 1f)
-			.addBox(-0.5f, 2.8f, -0.5f, 1f, 0.7f, 1f))
+			.addBox(-1.5f, 0f, -0.5f, 3f, 1.6f, 1f)
+			.addBox(-1.25f, 1.6f, -0.5f, 2.5f, 1f, 1f)
+			.addBox(-0.9f, 2.6f, -0.5f, 1.8f, 0.8f, 1f)
+			.addBox(-0.5f, 3.4f, -0.5f, 1f, 0.7f, 1f))
 		add("earInner", CubeListBuilder.create().texOffs(0, 0)
-			.addBox(-0.9f, 0.2f, 0.45f, 1.8f, 1.2f, 0.15f)
-			.addBox(-0.55f, 1.4f, 0.45f, 1.1f, 0.9f, 0.15f))
+			.addBox(-0.9f, 0.8f, 0.45f, 1.8f, 1.2f, 0.15f)
+			.addBox(-0.55f, 2f, 0.45f, 1.1f, 0.9f, 0.15f))
 		// One tail segment, 3 px long towards -Z (origin = its joint).
 		add("tail", CubeListBuilder.create().texOffs(0, 0).addBox(-0.6f, -0.6f, -3.2f, 1.2f, 1.2f, 3.4f))
 		add("tailTip", CubeListBuilder.create().texOffs(0, 0).addBox(-0.7f, -0.7f, -2.4f, 1.4f, 1.4f, 2.6f))
@@ -95,8 +95,9 @@ object CatEars {
 			val twitch = if ((time / 50).toInt() % 4 == 0) sin(time * 1.4f) * 8f else 0f
 			for (side in listOf(-1f, 1f)) {
 				pose.pushPose()
-				pose.px(2.6f * side, 8.4f, -0.6f)
-				pose.mulPose(Axis.ZP.rotationDegrees(-12f * side + (if (side > 0) twitch else 0f)))
+				// Base sunk 0.6 px into the head so no gap shows, even with the hat layer or when looking down.
+				pose.px(2.5f * side, 7.4f, -0.6f)
+				pose.mulPose(Axis.ZP.rotationDegrees(-7f * side + (if (side > 0) twitch else 0f)))
 				pose.mulPose(Axis.XP.rotationDegrees(-8f))
 				submit(ctx, parts.ear, pose, light, fur)
 				submit(ctx, parts.earInner, pose, light, INNER)
