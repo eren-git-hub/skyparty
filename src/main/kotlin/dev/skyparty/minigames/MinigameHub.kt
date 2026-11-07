@@ -82,8 +82,11 @@ object MinigameHub {
 		MinigameRegistry.register(dev.skyparty.minigames.board.TicTacToe)
 		MinigameRegistry.register(dev.skyparty.minigames.bomb.BombPass)
 		MinigameRegistry.register(dev.skyparty.minigames.imposter.Imposter)
+		MinigameRegistry.register(dev.skyparty.minigames.bluff.BazaarBluff)
+		MinigameRegistry.register(dev.skyparty.minigames.sketch.Pictionary)
 		for ((cmd, game) in listOf<Pair<String, Minigame>>("connect4" to dev.skyparty.minigames.board.ConnectFour, "tictactoe" to dev.skyparty.minigames.board.TicTacToe,
-			"bomb" to dev.skyparty.minigames.bomb.BombPass, "imposter" to dev.skyparty.minigames.imposter.Imposter)) {
+			"bomb" to dev.skyparty.minigames.bomb.BombPass, "imposter" to dev.skyparty.minigames.imposter.Imposter,
+			"bluff" to dev.skyparty.minigames.bluff.BazaarBluff, "sketch" to dev.skyparty.minigames.sketch.Pictionary)) {
 			SkypartyCommands.sub { ClientCommands.literal(cmd).executes { game.open(null); 1 } }
 		}
 		MinigameStore.load()
