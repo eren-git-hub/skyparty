@@ -28,6 +28,7 @@ object PetController {
 		if (frozenForTest) return
 		val player = mc.player ?: run { follower.reset(); return }
 		follower.tick(player)
+		PetReactions.tick(mc)
 	}
 
 	fun renderPos(partial: Float): Vec3 = follower.renderPos(partial)

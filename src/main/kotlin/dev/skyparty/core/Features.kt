@@ -14,6 +14,7 @@ object Features {
 		{ dev.skyparty.minigames.MinigameHub.init() },
 		{ dev.skyparty.minigames.chess.ChessGame.init() },
 		{ dev.skyparty.reminders.Reminders.init() },
+		{ dev.skyparty.reminders.PriceAlerts.init() },
 		{ dev.skyparty.stats.StatsFeature.init() },
 		{
 			for ((cmd, tab) in listOf("dle" to dev.skyparty.minigames.ui.HubTabs.DLE, "news" to dev.skyparty.minigames.ui.HubTabs.NEWS)) {

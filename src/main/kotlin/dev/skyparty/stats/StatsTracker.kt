@@ -125,6 +125,11 @@ object StatsTracker {
 			StatsStore.today().drops += Drop(now, rarity, item, m.groupValues[3].toIntOrNull() ?: 0, context ?: area)
 			StatsStore.markDirty(urgent = true)
 			ScoreboardPetHud.react(ScoreboardPetHud.Reaction.HAPPY)
+			dev.skyparty.pet.PetReactions.onDrop(StatsPatterns.RARITY_RANK[rarity] ?: 1)
+			return
+		}
+		if (StatsPatterns.SKILL_LEVEL_UP.matches(text)) {
+			dev.skyparty.pet.PetReactions.onLevelUp()
 			return
 		}
 		if (StatsPatterns.SLAYER_COMPLETE.matches(text)) {

@@ -34,7 +34,7 @@ object PetRenderer {
 
 		if (!hideOwnForTest) renderPet(ctx, level, ownModel, PetController.follower, partial, palette(
 			CustomPets.bodyColor.value, CustomPets.accentColor.value, CustomPets.opacity.value / 100.0,
-		), PetData.isAfk)
+		), PetData.isAfk, PetReactions.pose(PetController.age + partial))
 
 		if (CustomPets.showOthers.value) {
 			val maxDist = CustomPets.renderDistance.value
@@ -47,21 +47,22 @@ object PetRenderer {
 
 	fun renderPet(
 		ctx: LevelRenderContext, level: ClientLevel, model: PetModel, follower: PetFollower,
-		partial: Float, colors: Map<ColorRole, Int>, sleeping: Boolean,
+		partial: Float, colors: Map<ColorRole, Int>, sleeping: Boolean, react: PetReactions.Pose? = null,
 	) {
 		val time = follower.age + partial
 		val air = follower.renderAirborne(partial)
-		animate(model, time, follower.speed, air, sleeping)
+		// A reaction wakes a sleeping pet.
+		animate(model, time, follower.speed, air, sleeping && react == null, react)
 
 		val pos = follower.renderPos(partial)
 		val cam = ctx.levelState().cameraRenderState.pos
-		val bob = sin(time * 0.25) * 0.05 * air
+		val bob = sin(time * 0.25) * 0.05 * air + (react?.lift ?: 0.0)
 		val light = lightAt(level, BlockPos.containing(pos.x, pos.y + 0.5, pos.z))
 
 		val pose = ctx.poseStack()
 		pose.pushPose()
 		pose.translate(pos.x - cam.x, pos.y - cam.y + bob, pos.z - cam.z)
-		pose.mulPose(Axis.YP.rotationDegrees(-follower.renderYaw(partial)))
+		pose.mulPose(Axis.YP.rotationDegrees(-follower.renderYaw(partial) - (react?.spin ?: 0f)))
 		pose.scale(model.scale, model.scale, model.scale)
 
 		val collector = ctx.submitNodeCollector()
@@ -87,7 +88,7 @@ object PetRenderer {
 	 * Poses the dragon. Walking: diagonal leg gait, tail swaying, wings folded on the flanks.
 	 * Flying ([air] = 1): legs tucked, wings spread and beating. Sleeping: head down, eyes shut, slow breath.
 	 */
-	private fun animate(model: PetModel, time: Float, speed: Double, air: Float, sleeping: Boolean) {
+	private fun animate(model: PetModel, time: Float, speed: Double, air: Float, sleeping: Boolean, react: PetReactions.Pose?) {
 		model.reset()
 		val walk = ((speed * 7).toFloat().coerceIn(0f, 1f)) * (1f - air)
 		val breath = sin(time * 0.08f)
@@ -141,6 +142,26 @@ object PetRenderer {
 					it.zScale = Mth.lerp(air, 0.7f, 1f)
 				}
 			}
+		}
+
+		if (react != null) {
+			// Happy: wings open and flutter fast, head up, mouth open, tail wagging quickly.
+			val w = react.wings
+			val flutter = sin(time * 1.3f) * 0.9f
+			for ((suffix, sign) in listOf("L" to 1f, "R" to -1f)) {
+				for (name in listOf("wing$suffix", "wingBone$suffix")) {
+					model.part(name)?.let {
+						it.x = Mth.lerp(w, it.x, sign * 2.3f)
+						it.xRot = Mth.lerp(w, it.xRot, 0f)
+						it.yRot = Mth.lerp(w, it.yRot, sign * 0.1f)
+						it.zRot = Mth.lerp(w, it.zRot, sign * flutter)
+						it.zScale = Mth.lerp(w, it.zScale, 1f)
+					}
+				}
+			}
+			for (name in listOf("head", "headJaw", "headEyes", "headHorns")) model.part(name)?.let { it.xRot -= react.headUp }
+			model.part("headJaw")?.let { it.xRot += react.jaw }
+			model.part("tail")?.let { it.yRot += sin(time * 1.1f) * 0.5f * react.tailWag }
 		}
 
 		if (sleeping) {

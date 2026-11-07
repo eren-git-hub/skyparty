@@ -41,12 +41,16 @@ object Bazaar {
 		private set
 	@Volatile var usingSample = false
 		private set
-	private var fetchedAt = 0L
+	/** Insta-buy price of every product (no volume/spread filter), for price alerts. */
+	@Volatile var allPrices: Map<String, Double> = emptyMap()
+		private set
+	var fetchedAt = 0L
+		private set
 
-	/** Starts a fetch unless fresh data is cached or a fetch is running. */
-	fun ensureLoaded(force: Boolean = false) {
+	/** Starts a fetch unless data younger than [maxAgeMs] is cached or a fetch is running. */
+	fun ensureLoaded(force: Boolean = false, maxAgeMs: Long = CACHE_MS) {
 		if (loading) return
-		if (!force && products != null && !usingSample && System.currentTimeMillis() - fetchedAt < CACHE_MS) return
+		if (!force && products != null && !usingSample && System.currentTimeMillis() - fetchedAt < maxAgeMs) return
 		loading = true
 		error = null
 		val request = HttpRequest.newBuilder(URI.create(URL))
@@ -58,15 +62,17 @@ object Bazaar {
 				if (response.statusCode() != 200) error("HTTP ${response.statusCode()}")
 				parse(response.body())
 			}
-			.whenComplete { list, throwable ->
+			.whenComplete { parsed, throwable ->
 				Minecraft.getInstance().execute {
 					loading = false
+					val list = parsed?.first
 					if (throwable != null || list.isNullOrEmpty()) {
 						Skyparty.LOGGER.warn("Bazaar fetch failed: {}", throwable?.message ?: "no products")
 						error = "Couldn't reach the Hypixel Bazaar API. Are you offline?"
 						if (Location.isDev && products == null) useSample()
 					} else {
 						products = list
+						allPrices = parsed.second
 						usingSample = false
 						fetchedAt = System.currentTimeMillis()
 					}
@@ -76,17 +82,20 @@ object Bazaar {
 
 	fun useSample() {
 		products = SAMPLE.map { (id, price) -> Product(id, prettyName(id), price) }
+		if (allPrices.isEmpty()) allPrices = SAMPLE.toMap()
 		usingSample = true
 	}
 
-	private fun parse(body: String): List<Product> {
+	private fun parse(body: String): Pair<List<Product>, Map<String, Double>> {
 		val root = JsonParser.parseString(body).asJsonObject
 		if (root["success"]?.asBoolean != true) error("API returned success=false")
 		val out = mutableListOf<Product>()
+		val all = HashMap<String, Double>()
 		for ((id, el) in root.getAsJsonObject("products").entrySet()) {
-			if (!usable(id)) continue
 			val q = el.asJsonObject.getAsJsonObject("quick_status") ?: continue
 			val buy = q["buyPrice"]?.asDouble ?: 0.0
+			if (buy > 0.0 && ':' !in id) all[id] = buy
+			if (!usable(id)) continue
 			val sell = q["sellPrice"]?.asDouble ?: 0.0
 			val volume = (q["buyMovingWeek"]?.asLong ?: 0L) + (q["sellMovingWeek"]?.asLong ?: 0L)
 			if (buy <= 0.5 || sell <= 0.0 || volume < MIN_WEEKLY_VOLUME) continue
@@ -94,7 +103,7 @@ object Bazaar {
 			if (buy > sell * 4) continue
 			out += Product(id, prettyName(id), buy)
 		}
-		return out.sortedBy { it.id }
+		return out.sortedBy { it.id } to all
 	}
 
 	private fun usable(id: String) = ':' !in id && !id.startsWith("ENCHANTMENT_") && !id.startsWith("GENERATOR_UPGRADE") &&

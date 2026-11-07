@@ -7,6 +7,7 @@ import com.google.gson.JsonParser
 import com.mojang.brigadier.arguments.StringArgumentType
 import dev.skyparty.Skyparty
 import dev.skyparty.core.SkypartyCommands
+import dev.skyparty.minigames.price.Bazaar
 import dev.skyparty.minigames.ui.GameColors
 import dev.skyparty.minigames.ui.GameScreen
 import dev.skyparty.minigames.ui.HubTabs
@@ -212,6 +213,15 @@ class RemindersScreen : GameScreen("Reminders") {
 		time = "%02d:%02d".format(Math.floorMod(hh, 24), mm)
 	}
 	private var error: String? = null
+	private var alertItem = ""
+	private var alertPrice = ""
+	private var alertBelow = true
+	private var alertError: String? = null
+
+	override fun init() {
+		super.init()
+		Bazaar.ensureLoaded()
+	}
 
 	override fun draw(g: GuiGraphicsExtractor, mouseX: Int, mouseY: Int, partialTick: Float) {
 		val top = hubChrome(g, HubTabs.REMINDERS)
@@ -255,10 +265,37 @@ class RemindersScreen : GameScreen("Reminders") {
 		button(g, x + w - 66, ry, 60, 14, "+ Add", mouseX, mouseY, color = GameColors.GREEN) { submit() }
 		y += 92
 
-		// List
-		val now = System.currentTimeMillis()
+		// Bazaar price alert: item, below/above, price
+		panel(g, x, y, w, 62, "Bazaar price alert")
+		field(g, x + 6, y + 21, w - 12, "Item, e.g. Enchanted Diamond", alertItem, focus == 2) { focus = 2 }
+		val ay = y + 41
+		button(g, x + 6, ay, 44, 14, "Below", mouseX, mouseY, color = if (alertBelow) Theme.accent else 0xFF3A3050.toInt(), hint = "Alert when the price drops to this") { alertBelow = true }
+		button(g, x + 52, ay, 44, 14, "Above", mouseX, mouseY, color = if (!alertBelow) Theme.accent else 0xFF3A3050.toInt(), hint = "Alert when the price rises to this") { alertBelow = false }
+		field(g, x + 100, ay, 56, "1.5k", alertPrice, focus == 3) { focus = 3 }
+		val match = PriceAlerts.findItem(alertItem)
+		val alertPreview = when {
+			alertError != null -> "§c$alertError"
+			Bazaar.allPrices.isEmpty() -> if (Bazaar.loading) "§7Loading prices…" else "§cBazaar unreachable"
+			alertItem.isBlank() -> "§8Checked every minute"
+			match == null -> "§cNo matching item"
+			else -> "§f${Bazaar.prettyName(match)} §7now §6${PriceAlerts.formatCoins(Bazaar.allPrices.getValue(match))}"
+		}
+		g.text(font, font.plainSubstrByWidth(alertPreview, w - 238), x + 162, ay + 3, Theme.TEXT, false)
+		button(g, x + w - 66, ay, 60, 14, "+ Alert", mouseX, mouseY, color = GameColors.GREEN) { submitAlert() }
+		y += 70
+
+		// Alerts, then reminders
+		for (a in PriceAlerts.list.toList()) {
+			if (y + 22 > height - 4) break
+			g.fill(x, y, x + w, y + 20, GameColors.CARD)
+			g.fill(x, y, x + 2, y + 20, GameColors.GOLD)
+			val now = Bazaar.allPrices[a.itemId]?.let { " §8(now ${PriceAlerts.formatCoins(it)})" } ?: ""
+			g.text(font, "🔔 §f${Bazaar.prettyName(a.itemId)} §7${if (a.below) "below" else "above"} §6${PriceAlerts.formatCoins(a.price)}$now", x + 8, y + 6, Theme.TEXT, false)
+			button(g, x + w - 20, y + 3, 14, 14, "✖", mouseX, mouseY, color = GameColors.RED, hint = "Delete") { PriceAlerts.remove(a) }
+			y += 23
+		}
 		val list = Reminders.list.toList()
-		if (list.isEmpty()) {
+		if (list.isEmpty() && PriceAlerts.list.isEmpty()) {
 			centered(g, "§7No reminders yet. Add one above!", width / 2, y + 16, Theme.TEXT)
 			return
 		}
@@ -303,11 +340,30 @@ class RemindersScreen : GameScreen("Reminders") {
 		text = ""
 	}
 
+	private fun submitAlert() {
+		val id = PriceAlerts.findItem(alertItem)
+		val price = PriceAlerts.parsePrice(alertPrice)
+		alertError = when {
+			Bazaar.allPrices.isEmpty() -> "Prices not loaded yet"
+			id == null -> "No matching item"
+			price == null -> "Price like 1500, 1.5k or 2m"
+			else -> null
+		}
+		if (alertError != null) return
+		PriceAlerts.add(id!!, alertBelow, price!!)
+		Minecraft.getInstance().soundManager.play(SimpleSoundInstance.forUI(SoundEvents.EXPERIENCE_ORB_PICKUP, 1.2f))
+		alertItem = ""
+		alertPrice = ""
+	}
+
 	override fun keyPressed(event: KeyEvent): Boolean {
 		when (event.key()) {
-			GLFW.GLFW_KEY_BACKSPACE -> { if (focus == 0) text = text.dropLast(1) else time = time.dropLast(1); return true }
-			GLFW.GLFW_KEY_TAB -> { focus = 1 - focus; return true }
-			GLFW.GLFW_KEY_ENTER, GLFW.GLFW_KEY_KP_ENTER -> { submit(); return true }
+			GLFW.GLFW_KEY_BACKSPACE -> {
+				when (focus) { 0 -> text = text.dropLast(1); 1 -> time = time.dropLast(1); 2 -> alertItem = alertItem.dropLast(1); else -> alertPrice = alertPrice.dropLast(1) }
+				return true
+			}
+			GLFW.GLFW_KEY_TAB -> { focus = (focus + 1) % 4; return true }
+			GLFW.GLFW_KEY_ENTER, GLFW.GLFW_KEY_KP_ENTER -> { if (focus >= 2) submitAlert() else submit(); return true }
 		}
 		return super.keyPressed(event)
 	}
@@ -315,9 +371,14 @@ class RemindersScreen : GameScreen("Reminders") {
 	override fun charTyped(event: CharacterEvent): Boolean {
 		if (!event.isAllowedChatCharacter()) return false
 		val s = event.codepointAsString()
-		if (focus == 0 && text.length < 80) text += s
-		if (focus == 1 && time.length < 10) time += s
+		when (focus) {
+			0 -> if (text.length < 80) text += s
+			1 -> if (time.length < 10) time += s
+			2 -> if (alertItem.length < 40) alertItem += s
+			else -> if (alertPrice.length < 12) alertPrice += s
+		}
 		error = null
+		alertError = null
 		return true
 	}
 }

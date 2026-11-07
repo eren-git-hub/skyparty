@@ -52,6 +52,9 @@ object StatsPatterns {
 		"PRAY RNGESUS DROP!" to "§6",
 	)
 
+	/** Skill level-up chat line, e.g. "SKILL LEVEL UP Mining XXIV➜XXV" (needs verification). Group 1 = skill. */
+	val SKILL_LEVEL_UP = Regex("^\\s*SKILL LEVEL UP ([A-Z][a-z]+) .+$")
+
 	val SLAYER_COMPLETE = Regex("^\\s*SLAYER QUEST COMPLETE!\\s*$")
 
 	/** Sidebar line showing the active slayer boss during a quest, e.g. "Voidgloom Seraph IV". */
