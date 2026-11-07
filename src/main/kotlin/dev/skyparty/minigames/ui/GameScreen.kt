@@ -145,6 +145,7 @@ abstract class GameScreen(title: String) : Screen(Component.literal(title)) {
 		g.fill(0, 0, width, h, Theme.HEADER)
 		for (i in 0 until width step 2) g.fill(i, h - 2, i + 2, h, Theme.rainbow(i / width.toFloat()))
 		g.text(font, "§l★ Skyparty", 8, 7, Theme.rainbow(0f, 0.55f), true)
+		g.text(font, "- by Exlusiv", 8 + font.width("§l★ Skyparty") + 5, 7, Theme.TEXT_DIM, false)
 		val chipW = font.width("${MinigameStore.balance()} Tokens") + 16
 		tokenChip(g, width - 8, 5)
 		val sx = width - 8 - chipW - 6 - 62
