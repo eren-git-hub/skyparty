@@ -221,8 +221,7 @@ class RemindersScreen : GameScreen("Reminders") {
 
 		// New reminder form: "In" (a duration) or "At" (a time of day)
 		panel(g, x, y, w, 84, "New reminder")
-		val caret = if ((System.currentTimeMillis() / 500) % 2 == 0L) "_" else " "
-		field(g, x + 6, y + 21, w - 12, "What should I remind you about?", text + if (focus == 0) caret else "", focus == 0) { focus = 0 }
+		field(g, x + 6, y + 21, w - 12, "What should I remind you about?", text, focus == 0) { focus = 0 }
 		val my2 = y + 41
 		button(g, x + 6, my2, 24, 14, "In", mouseX, mouseY, color = if (!atMode) Theme.accent else 0xFF3A3050.toInt(), hint = "After a duration") {
 			atMode = false; time = "30m"
@@ -236,7 +235,7 @@ class RemindersScreen : GameScreen("Reminders") {
 				button(g, px, my2, 26, 14, p, mouseX, mouseY, color = if (time == p) Theme.accent else 0xFF3A3050.toInt()) { time = p }
 				px += 28
 			}
-			field(g, px + 2, my2, 52, "1h30m", time + if (focus == 1) caret else "", focus == 1) { focus = 1 }
+			field(g, px + 2, my2, 52, "1h30m", time, focus == 1) { focus = 1 }
 		} else {
 			val (h, m) = clockParts()
 			button(g, px, my2, 14, 14, "-", mouseX, mouseY) { setClock(h - 1, m) }
@@ -246,7 +245,7 @@ class RemindersScreen : GameScreen("Reminders") {
 			button(g, px + 60, my2, 14, 14, "-", mouseX, mouseY) { setClock(h, m - 5) }
 			centered(g, "§l%02d".format(m), px + 85, my2 + 3, Theme.TEXT)
 			button(g, px + 96, my2, 14, 14, "+", mouseX, mouseY) { setClock(h, m + 5) }
-			field(g, px + 116, my2, 46, "18:30", time + if (focus == 1) caret else "", focus == 1) { focus = 1 }
+			field(g, px + 116, my2, 46, "18:30", time, focus == 1) { focus = 1 }
 		}
 		val ry = y + 62
 		button(g, x + 6, ry, 92, 14, if (repeat) (if (atMode) "↻ Daily ✔" else "↻ Repeat ✔") else (if (atMode) "↻ Daily" else "↻ Repeat"), mouseX, mouseY,
@@ -278,8 +277,16 @@ class RemindersScreen : GameScreen("Reminders") {
 	private fun field(g: GuiGraphicsExtractor, x: Int, y: Int, w: Int, placeholder: String, value: String, active: Boolean, onClick: () -> Unit) {
 		g.fill(x, y, x + w, y + 15, 0xFF100A1C.toInt())
 		g.outline(x, y, w, 15, if (active) Theme.rainbow(0f, 0.5f) else GameColors.LINE)
-		val shown = if (value.isBlank()) "§8$placeholder" else font.plainSubstrByWidth(value, w - 8)
-		g.text(font, shown, x + 4, y + 4, Theme.TEXT, false)
+		// The placeholder stays put while the field is empty; only the cursor blinks (in front of it or after the text).
+		val caretOn = active && (System.currentTimeMillis() / 500) % 2 == 0L
+		if (value.isEmpty()) {
+			g.text(font, "§8$placeholder", x + 4, y + 4, Theme.TEXT, false)
+			if (caretOn) g.fill(x + 3, y + 3, x + 4, y + 12, Theme.TEXT)
+		} else {
+			val shown = font.plainSubstrByWidth(value, w - 10)
+			g.text(font, shown, x + 4, y + 4, Theme.TEXT, false)
+			if (caretOn) g.text(font, "_", x + 4 + font.width(shown), y + 4, Theme.TEXT, false)
+		}
 		clickArea(x, y, w, 15, onClick)
 	}
 
