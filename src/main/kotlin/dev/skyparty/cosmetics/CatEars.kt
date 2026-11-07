@@ -28,7 +28,7 @@ import kotlin.math.sin
  */
 object CatEars {
 	/** Classic catgirl look: black ears (pink inside) and a black tail. Names are lowercase. */
-	private val OWNERS = setOf("evocative", "mutsiri", "jijli", "mongers")
+	private val OWNERS = setOf("evocative", "mutsiri", "jijli", "mongers", "limnophobia")
 	private const val FUR = 0xFF1B1A1F.toInt()
 
 	/** Extra names for tests only (the dev account is "Player0"). */
