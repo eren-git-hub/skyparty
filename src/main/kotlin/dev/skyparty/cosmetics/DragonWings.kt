@@ -41,16 +41,64 @@ object DragonWings {
 	fun hasWings(player: Player) = player.gameProfile.name.lowercase().let { it in OWNERS || it in testOwners }
 
 	/**
-	 * Each wing is one flat, pixel-art textured plane (24x20 px, texture 64x32: front at 0,0, mirrored back
-	 * at 24,0) in the colors of the owner's skin. The pivot is the shoulder, 7 px below the top edge.
+	 * The wing design as pixels (image space: x = outwards from the spine, y = down). Letters index the
+	 * palette rows of dragon_wings.png (4 px tall each): a outline, b/c bone, d..h membrane shades taken
+	 * from the owner's skin. Generated from the 2D design, so the 3D wing looks exactly like it.
+	 */
+	private val PIXELS = listOf(
+		"...................abccc",
+		"..............accccbccca",
+		"..........accbccccbddda.",
+		"......aaccccbccdddeeeea.",
+		"...aacbccccdcccddffffa..",
+		"aacccbcddddcccdbddffa...",
+		"ccccdddgggdccdbdcddga...",
+		"cdddeeeehdcdcdcddcdda...",
+		"afffffhffdcdbdcdfdccda..",
+		"afffhfffdcddcddcdfdcca..",
+		"aahgggggdcddcddbdggabca.",
+		"..aaeeedcdedcddcdea..cc.",
+		"....affdbdfdcdfdcda.....",
+		"....afdbdffdbdfacda.....",
+		".....adcaagdcda.bca.....",
+		".....aca..adca..ac......",
+		"......c...adca...c......",
+		"...........ac...........",
+		"...........ab...........",
+		"........................",
+	)
+	private const val BONES = "bc"
+	/** Image row of the shoulder (the wing's pivot). */
+	private const val SHOULDER_ROW = 7f
+	private const val BONE_DEPTH = 1.0f
+	private const val SKIN_DEPTH = 0.5f
+	const val SCALE = 0.8f
+
+	/**
+	 * Each wing is the pixel design extruded into blocks: every horizontal run of one color is one box,
+	 * bones thicker than the membrane so they stand out. Two separate parts, because submitted parts are
+	 * drawn later and one shared part would end up in one place.
 	 */
 	private val wings: List<ModelPart> by lazy {
-		// Two separate parts: submitted parts are drawn later, so one shared part would end up in one place.
 		val mesh = MeshDefinition()
 		for (name in listOf("left", "right")) {
-			mesh.root.addOrReplaceChild(name, CubeListBuilder.create().texOffs(0, 0).addBox(0f, -13f, 0f, 24f, 20f, 0f), PartPose.ZERO)
+			val cubes = CubeListBuilder.create()
+			for ((y, row) in PIXELS.withIndex()) {
+				var x = 0
+				while (x < row.length) {
+					val c = row[x]
+					if (c == '.') { x++; continue }
+					var end = x
+					while (end + 1 < row.length && row[end + 1] == c) end++
+					val depth = if (c in BONES) BONE_DEPTH else SKIN_DEPTH
+					cubes.texOffs(0, (c - 'a') * 4)
+						.addBox(x.toFloat(), SHOULDER_ROW - y - 1, -depth / 2, (end - x + 1).toFloat(), 1f, depth)
+					x = end + 1
+				}
+			}
+			mesh.root.addOrReplaceChild(name, cubes, PartPose.ZERO)
 		}
-		val root = LayerDefinition.create(mesh, 64, 32).bakeRoot()
+		val root = LayerDefinition.create(mesh, 64, 64).bakeRoot()
 		listOf(root.getChild("left"), root.getChild("right"))
 	}
 
@@ -79,6 +127,7 @@ object DragonWings {
 				pose.translate(0.0, 19.0 / 16, -3.5 / 16)
 				pose.mulPose(Axis.XP.rotationDegrees(28f))
 			} else pose.translate(0.0, 22.0 / 16, -2.6 / 16)
+			pose.scale(SCALE, SCALE, SCALE)
 			val collector = ctx.submitNodeCollector()
 			val sides = listOf((spread + flap) to 1f, (PI.toFloat() - spread - flap) to -1f)
 			for ((i, side) in sides.withIndex()) {

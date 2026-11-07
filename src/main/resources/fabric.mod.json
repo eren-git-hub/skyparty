@@ -4,6 +4,7 @@
 	"version": "${version}",
 	"name": "Skyparty",
 	"description": "The party mod for Hypixel SkyBlock: pets that grow with you, party games and your SkyBlock Wrapped.",
+	"icon": "assets/skyparty/icon.png",
 	"authors": ["Skyparty"],
 	"license": "All-Rights-Reserved",
 	"environment": "client",
