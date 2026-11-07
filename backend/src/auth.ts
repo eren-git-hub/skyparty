@@ -11,6 +11,7 @@ import {
 	randomHex,
 	safeEqual,
 } from "./util";
+import { verifyKeyLogin } from "./keyauth";
 
 /**
  * Authentication without ever seeing the Minecraft access token:
@@ -114,6 +115,9 @@ export async function verifyLogin(env: Env, req: Request, key: string, body: any
 	if (Number(challenge.split(".")[1]) < Date.now() / 1000) return { ok: false, status: 401, code: "challenge_expired" };
 
 	const serverId = await serverIdFor(key, challenge);
+	// Preferred: signed profile key (no request to Mojang, whose session server blocks Cloudflare).
+	if (body?.keySignature !== undefined) return verifyKeyLogin(body, serverId, exp);
+
 	const url =
 		"https://sessionserver.mojang.com/session/minecraft/hasJoined?username=" +
 		encodeURIComponent(username) +

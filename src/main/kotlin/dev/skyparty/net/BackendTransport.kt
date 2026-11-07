@@ -172,13 +172,36 @@ object BackendTransport : Net.Transport {
 				})
 			} else {
 				val challenge = getJson("/auth/challenge", null)
-				// The access token goes to Mojang only (same call vanilla makes when joining a server).
-				Minecraft.getInstance().services().sessionService()
-					.joinServer(user.profileId, user.accessToken, challenge.get("serverId").asString)
-				postJson("/auth/verify", JsonObject().apply {
-					addProperty("username", user.name)
-					addProperty("challenge", challenge.get("challenge").asString)
-				})
+				val serverId = challenge.get("serverId").asString
+				val keyPair = runCatching {
+					Minecraft.getInstance().profileKeyPairManager.prepareKeyPair().get(15, TimeUnit.SECONDS).orElse(null)
+				}.getOrNull()
+				if (keyPair != null) {
+					// Prove the account with Mojang's chat-signing key: the backend checks Mojang's signature on the
+					// key and ours on this login, without calling Mojang (whose session server blocks Cloudflare).
+					val data = keyPair.publicKey().data()
+					val signer = java.security.Signature.getInstance("SHA256withRSA")
+					signer.initSign(keyPair.privateKey())
+					signer.update("skyparty-login:$serverId".toByteArray(Charsets.UTF_8))
+					val b64 = java.util.Base64.getEncoder()
+					postJson("/auth/verify", JsonObject().apply {
+						addProperty("username", user.name)
+						addProperty("uuid", user.profileId.toString())
+						addProperty("challenge", challenge.get("challenge").asString)
+						addProperty("publicKey", b64.encodeToString(data.key().encoded))
+						addProperty("expiresAt", data.expiresAt().toEpochMilli())
+						addProperty("keySignature", b64.encodeToString(data.keySignature()))
+						addProperty("signature", b64.encodeToString(signer.sign()))
+					})
+				} else {
+					// No chat key (e.g. chat signing disabled): classic join + hasJoined. The access token goes to
+					// Mojang only (same call vanilla makes when joining a server).
+					Minecraft.getInstance().services().sessionService().joinServer(user.profileId, user.accessToken, serverId)
+					postJson("/auth/verify", JsonObject().apply {
+						addProperty("username", user.name)
+						addProperty("challenge", challenge.get("challenge").asString)
+					})
+				}
 			}
 			if (gen != generation) return
 			val s = Session(
@@ -254,6 +277,9 @@ object BackendTransport : Net.Transport {
 			"rate_limited" -> "Rate limited, retrying later"
 			"not_configured" -> "Backend has no SESSION_SECRET set"
 			"mojang_unreachable" -> "Server could not reach Mojang to check your login"
+			"key_not_signed_by_mojang" -> "Your chat key was not accepted (restart the game)"
+			"key_expired" -> "Your chat key expired (restart the game)"
+			"bad_signature" -> "Login signature was rejected"
 			else -> if (e.code.startsWith("mojang")) "Mojang refused the login check (${e.code.removePrefix("mojang_")})" else "Backend error ${e.status} (${e.code})"
 		}
 		is com.mojang.authlib.exceptions.AuthenticationException -> "Mojang login failed: ${e.message ?: e.javaClass.simpleName}"

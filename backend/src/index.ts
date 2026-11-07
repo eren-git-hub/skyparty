@@ -14,7 +14,8 @@ const MAX_BODY = 2048;
  * HTTP API
  *   GET    /                        health/info
  *   GET    /auth/challenge          -> { challenge, serverId, expiresIn }
- *   POST   /auth/verify             { username, challenge } (or { username: "dev:<name>", uuid? } in DEV_MODE)
+ *   POST   /auth/verify             { username, challenge, uuid, publicKey, expiresAt, keySignature, signature }
+ *                                    (legacy: { username, challenge } via Mojang hasJoined; DEV_MODE: { username: "dev:<name>" })
  *                                   -> { token, uuid, name, expiresIn }
  *   GET    /rooms/<roomId>          WebSocket upgrade, header "Authorization: Bearer <token>"
  *   PUT    /pets/me                 { name, stage, bodyColor, accentColor, visibility }
