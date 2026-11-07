@@ -7,14 +7,16 @@ object HubTabs {
 	const val GAMES = 0
 	const val DLE = 1
 	const val NEWS = 2
-	const val REMINDERS = 3
-	const val WRAPPED = 4
+	const val MAYOR = 3
+	const val REMINDERS = 4
+	const val WRAPPED = 5
 
-	val names = listOf("★ Games", "✎ Skyblockdle", "✉ News", "⏰ Reminders", "✦ Wrapped")
+	val names = listOf("★ Games", "✎ Skyblockdle", "✉ News", "♔ Mayor", "⏰ Reminders", "✦ Wrapped")
 
 	fun open(index: Int): Screen = when (index) {
 		DLE -> dev.skyparty.dle.DleScreen()
 		NEWS -> dev.skyparty.news.NewsScreen()
+		MAYOR -> dev.skyparty.mayor.MayorScreen()
 		REMINDERS -> dev.skyparty.reminders.RemindersScreen()
 		WRAPPED -> dev.skyparty.stats.WrappedScreen()
 		else -> HubScreen()

@@ -17,7 +17,7 @@ object Features {
 		{ dev.skyparty.reminders.PriceAlerts.init() },
 		{ dev.skyparty.stats.StatsFeature.init() },
 		{
-			for ((cmd, tab) in listOf("dle" to dev.skyparty.minigames.ui.HubTabs.DLE, "news" to dev.skyparty.minigames.ui.HubTabs.NEWS)) {
+			for ((cmd, tab) in listOf("dle" to dev.skyparty.minigames.ui.HubTabs.DLE, "news" to dev.skyparty.minigames.ui.HubTabs.NEWS, "mayor" to dev.skyparty.minigames.ui.HubTabs.MAYOR)) {
 				SkypartyCommands.sub { net.fabricmc.fabric.api.client.command.v2.ClientCommands.literal(cmd).executes { dev.skyparty.Skyparty.openNextTick(dev.skyparty.minigames.ui.HubTabs.open(tab)); 1 } }
 			}
 		},
