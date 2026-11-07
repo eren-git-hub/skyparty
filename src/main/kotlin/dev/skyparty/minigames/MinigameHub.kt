@@ -28,39 +28,55 @@ import java.util.UUID
 import kotlin.random.Random
 
 /**
- * Minigames framework: lobby rooms (party room or a shareable code room), invites, the hub screen
- * and the "/sp games" command.
+ * Minigames framework: lobby rooms (party room or a shareable code room), game rooms inside them, invites,
+ * the hub screen and the "/sp games" command.
  *
- * Lobby protocol (inside a party/code room, all messages echo to the sender):
- *  - "lobby.invite"  {game, inviteId, ready:[{id,name}]}  host picked a game; receivers get an invite toast
- *  - "lobby.hello"   {}                                    someone joined a code room; host re-sends the invite
- *  - "lobby.ready"   {inviteId}                           sender accepted
- *  - "lobby.unready" {}                                   sender declined / left the lobby
- *  - "lobby.start"   {game, inviteId, players:[{id,name}]} host started; listed players call game.open(room)
- *  - "lobby.quit"    {}                                    sender closed the running game
- * Any other message type is forwarded to the running game's [LobbyRoom].
+ * A lobby (party/code room) can hold several game rooms at once ("sessions"), e.g. two players in Bazaar
+ * Bluff and two in Parkour. Each player is in at most one. Everyone starts NOT ready; the host starts with
+ * the players that are ready. Game messages carry the session id ("_s"), so games never see each other.
+ *
+ * Lobby protocol (all messages echo to the sender, every client applies them in the same order):
+ *  - "lobby.open"  {sid, game}            sender opened a game room (and is in it, not ready)
+ *  - "lobby.join"  {sid}                  sender joined that room (leaving any other)
+ *  - "lobby.ready" {sid, on}              sender is (not) ready
+ *  - "lobby.leave" {sid}                  sender left the room; the host leaving closes it
+ *  - "lobby.start" {sid, players:[…]}     host started; listed players open the game
+ *  - "lobby.quit"  {sid}                  sender closed the running game
+ *  - "lobby.hello" {}                     someone (re)joined the lobby; every host answers with "lobby.state"
+ *  - "lobby.state" {sid, game, joined:[…], ready:[ids], playing:[ids]}  full state of one room (from its host)
  */
 object MinigameHub {
 	private val mc get() = Minecraft.getInstance()
 
-	/** Lobby state for one joined room. */
+	/** One game room inside a lobby. */
+	class Session(val id: String, val gameId: String, val host: UUID, val hostName: String) {
+		/** Everyone in this room (join order, host first). */
+		val joined = linkedMapOf<UUID, String>()
+		val ready = linkedSetOf<UUID>()
+		/** Players of the running game (empty = waiting). */
+		val playing = linkedSetOf<UUID>()
+
+		val game get() = MinigameRegistry.byId(gameId)
+		val isHost get() = host == Net.selfId
+		val inGame get() = playing.isNotEmpty()
+		val selfIn get() = Net.selfId in joined
+		val selfReady get() = Net.selfId in ready
+		fun nameOf(id: UUID) = joined[id] ?: "Player"
+	}
+
+	/** Lobby state for one joined party/code room. */
 	class Lobby(val room: Net.Room, val isCode: Boolean) {
 		val transport: Net.Transport = Net.transport
-		var gameId: String? = null
-		var inviteId: String? = null
-		var host: UUID? = null
-		var hostName: String = ""
-		val ready = linkedMapOf<UUID, String>()
+		val sessions = linkedMapOf<String, Session>()
 		var active: LobbyRoom? = null
 
 		val code: String? get() = if (isCode) room.id.removePrefix("code:") else null
-		val isHost get() = host == Net.selfId
-		val game get() = gameId?.let { MinigameRegistry.byId(it) }
-		val selfReady get() = Net.selfId in ready
 		val label get() = if (isCode) "Code room ${code}" else "Party room"
+		/** The game room you are in, if any. */
+		val mine: Session? get() = sessions.values.firstOrNull { it.selfIn }
 	}
 
-	class Invite(val lobby: Lobby, val gameId: String, val inviteId: String, val hostName: String, val at: Long)
+	class Invite(val lobby: Lobby, val sessionId: String, val gameId: String, val hostName: String, val at: Long)
 
 	private var partyLobby: Lobby? = null
 	private var codeLobby: Lobby? = null
@@ -103,7 +119,7 @@ object MinigameHub {
 		registerCommand()
 		// Server came online / went offline: move the code room over to the new connection.
 		Net.transportListeners += {
-			codeLobby?.let { old -> old.code?.let { code -> leaveLobby(old); codeLobby = joinLobby("code:$code", isCode = true).also { l -> l.room.send("lobby.hello") } } }
+			codeLobby?.let { old -> old.code?.let { code -> leaveLobby(old); codeLobby = joinLobby("code:$code", isCode = true) } }
 			syncPartyRoom()
 		}
 	}
@@ -129,7 +145,7 @@ object MinigameHub {
 			actions.forEach { it() }
 		}
 		if (tickCount % 40 == 0) syncPartyRoom()
-		invite?.let { if (System.currentTimeMillis() - it.at > INVITE_TIMEOUT_MS) invite = null }
+		invite?.let { if (System.currentTimeMillis() - it.at > INVITE_TIMEOUT_MS || it.lobby.sessions[it.sessionId] == null) invite = null }
 	}
 
 	// ------------------------------------------------------------------ rooms
@@ -153,14 +169,20 @@ object MinigameHub {
 		val lobby = Lobby(room, isCode)
 		room.onMessage = { handle(lobby, it) }
 		room.onMembersChanged = { members ->
-			lobby.ready.keys.retainAll(members + Net.selfId)
-			lobby.active?.let { a -> a.members.filter { it !in members }.forEach { a.removePlayer(it) } }
+			val present = members + Net.selfId
+			for (s in lobby.sessions.values.toList()) {
+				if (s.host !in present) { lobby.sessions.remove(s.id); continue }
+				s.joined.keys.retainAll(present); s.ready.retainAll(present); s.playing.retainAll(present)
+			}
+			lobby.active?.let { a -> a.members.filter { it !in present }.forEach { a.removePlayer(it) } }
 		}
+		// Ask the hosts of rooms that already exist to describe them.
+		room.send("lobby.hello")
 		return lobby
 	}
 
 	private fun leaveLobby(lobby: Lobby) {
-		if (lobby.selfReady) lobby.room.send("lobby.unready")
+		lobby.mine?.let { lobby.room.send("lobby.leave", sid(it.id)) }
 		lobby.room.leave()
 		if (invite?.lobby === lobby) invite = null
 	}
@@ -181,10 +203,8 @@ object MinigameHub {
 			return
 		}
 		codeLobby?.let { leaveLobby(it) }
-		val lobby = joinLobby("code:$code", isCode = true)
-		codeLobby = lobby
-		lobby.room.send("lobby.hello")
-		Chat.info("§aJoined room §f$code§a. Waiting for the host to pick a game…")
+		codeLobby = joinLobby("code:$code", isCode = true)
+		Chat.info("§aJoined room §f$code§a. Open a game or join one in the room list.")
 		if (!Net.transport.connected) Chat.info("§7(Offline mode: online rooms need the Skyparty backend.)")
 	}
 
@@ -210,18 +230,29 @@ object MinigameHub {
 		game.open(LobbyRoom.solo(game.id))
 	}
 
-	/** Host: pick [game] in the current lobby and invite everyone in it. */
+	private fun sid(id: String) = JsonObject().apply { addProperty("sid", id) }
+
+	/** Opens a new game room for [game] in the current lobby (you join it, not ready). */
 	fun hostGame(game: Minigame) {
 		val lobby = lobby ?: run {
 			Chat.info("§cJoin a party or create a room code first.")
 			return
 		}
-		lobby.room.send("lobby.invite", JsonObject().apply {
-			addProperty("game", game.id)
-			addProperty("inviteId", UUID.randomUUID().toString().take(8))
-			add("ready", playersJson(mapOf(Net.selfId to Net.selfName)))
-		})
+		lobby.mine?.let { lobby.room.send("lobby.leave", sid(it.id)) }
+		lobby.room.send("lobby.open", sid(UUID.randomUUID().toString().take(8)).apply { addProperty("game", game.id) })
 	}
+
+	fun join(lobby: Lobby, session: Session) {
+		if (session.selfIn) return
+		lobby.mine?.let { lobby.room.send("lobby.leave", sid(it.id)) }
+		lobby.room.send("lobby.join", sid(session.id))
+		if (invite?.sessionId == session.id) invite = null
+	}
+
+	fun leave(lobby: Lobby, session: Session) = lobby.room.send("lobby.leave", sid(session.id))
+
+	fun setReady(lobby: Lobby, session: Session, ready: Boolean) =
+		lobby.room.send("lobby.ready", sid(session.id).apply { addProperty("on", ready) })
 
 	fun accept() {
 		val inv = invite ?: run {
@@ -229,9 +260,13 @@ object MinigameHub {
 			return
 		}
 		invite = null
+		val session = inv.lobby.sessions[inv.sessionId] ?: run {
+			Chat.info("§7That game room is gone.")
+			return
+		}
 		// Accepting a party invite while alone in a code room: leave it, or the hub would keep showing the empty room.
 		if (inv.lobby === partyLobby && aloneInCodeWithParty) leaveCode()
-		inv.lobby.room.send("lobby.ready", JsonObject().apply { addProperty("inviteId", inv.inviteId) })
+		join(inv.lobby, session)
 		openHub()
 	}
 
@@ -240,84 +275,108 @@ object MinigameHub {
 		invite = null
 	}
 
-	fun setReady(lobby: Lobby, ready: Boolean) {
-		if (ready) lobby.room.send("lobby.ready", JsonObject().apply { addProperty("inviteId", lobby.inviteId) })
-		else lobby.room.send("lobby.unready")
-	}
-
-	fun start(lobby: Lobby) {
-		val game = lobby.game ?: return
-		if (!lobby.isHost) return
-		if (lobby.ready.size < game.minPlayers) {
-			Chat.info("§c${game.name} needs at least ${game.minPlayers} players.")
+	fun start(lobby: Lobby, session: Session) {
+		val game = session.game ?: return
+		if (!session.isHost || session.inGame) return
+		if (!session.selfReady) {
+			Chat.info("§7Ready up first – the host plays too.")
 			return
 		}
-		val players = lobby.ready.entries.take(game.maxPlayers).associate { it.key to it.value }
-		lobby.room.send("lobby.start", JsonObject().apply {
-			addProperty("game", game.id)
-			addProperty("inviteId", lobby.inviteId)
-			add("players", playersJson(players))
-		})
+		val ready = session.joined.filterKeys { it in session.ready }
+		if (ready.size < game.minPlayers) {
+			Chat.info("§c${game.name} needs at least ${game.minPlayers} ready players.")
+			return
+		}
+		lobby.room.send("lobby.start", sid(session.id).apply { add("players", playersJson(ready.entries.take(game.maxPlayers).associate { it.key to it.value })) })
 	}
 
 	// ------------------------------------------------------------------ messages
 
 	private fun handle(lobby: Lobby, msg: Net.Message) {
 		val p = msg.payload
+		val from = msg.from
+		val s = p["sid"]?.asString?.let { lobby.sessions[it] }
 		when (msg.type) {
-			"lobby.invite" -> {
-				val gameId = p["game"]?.asString ?: return
-				val game = MinigameRegistry.byId(gameId) ?: return
-				lobby.gameId = gameId
-				lobby.inviteId = p["inviteId"]?.asString
-				lobby.host = msg.from
-				lobby.hostName = msg.fromName
-				lobby.ready.clear()
-				lobby.ready.putAll(readPlayers(p["ready"]?.asJsonArray))
-				lobby.ready[msg.from] = msg.fromName
-				if (msg.from != Net.selfId && !lobby.selfReady) offerInvite(lobby, game)
-			}
-			"lobby.hello" -> if (lobby.isHost && lobby.gameId != null && msg.from != Net.selfId) {
-				lobby.room.send("lobby.invite", JsonObject().apply {
-					addProperty("game", lobby.gameId)
-					addProperty("inviteId", lobby.inviteId)
-					add("ready", playersJson(lobby.ready))
-				})
-			}
-			"lobby.ready" -> if (lobby.gameId != null) {
-				lobby.ready[msg.from] = msg.fromName
-				if (msg.from == Net.selfId && invite?.lobby === lobby) invite = null
-			}
-			"lobby.unready" -> {
-				lobby.ready.remove(msg.from)
-				if (msg.from == lobby.host) {
-					lobby.gameId = null
-					lobby.host = null
-					if (invite?.lobby === lobby) invite = null
-				}
-			}
-			"lobby.start" -> {
+			"lobby.open" -> {
+				val id = p["sid"]?.asString ?: return
 				val game = MinigameRegistry.byId(p["game"]?.asString ?: return) ?: return
-				val players = readPlayers(p["players"]?.asJsonArray)
-				if (msg.from == Net.selfId || Net.selfId in players) startGame(lobby, game, msg.from, players)
-				if (invite?.lobby === lobby) invite = null
+				leaveAll(lobby, from)
+				val session = Session(id, game.id, from, msg.fromName)
+				session.joined[from] = msg.fromName
+				lobby.sessions[id] = session
+				if (from != Net.selfId && lobby.mine == null) offerInvite(lobby, session, game)
 			}
-			"lobby.quit" -> lobby.active?.removePlayer(msg.from)
-			else -> lobby.active?.let { active -> if (msg.from in active.members) active.onMessage(msg) }
+			"lobby.join" -> if (s != null) {
+				leaveAll(lobby, from, except = s.id)
+				s.joined[from] = msg.fromName
+			}
+			"lobby.ready" -> if (s != null && from in s.joined) {
+				if (p["on"]?.asBoolean == true) s.ready += from else s.ready -= from
+			}
+			"lobby.leave" -> if (s != null) removeFrom(lobby, s, from)
+			"lobby.start" -> if (s != null && from == s.host) {
+				val game = s.game ?: return
+				val players = readPlayers(p["players"]?.asJsonArray)
+				s.playing.clear(); s.playing += players.keys
+				s.ready.clear()
+				if (Net.selfId in players) startGame(lobby, s, game, players)
+			}
+			"lobby.quit" -> if (s != null) {
+				s.playing -= from
+				if (lobby.active?.session == s.id) lobby.active?.removePlayer(from)
+			}
+			"lobby.hello" -> if (from != Net.selfId) {
+				for (session in lobby.sessions.values) if (session.isHost) lobby.room.send("lobby.state", stateJson(session))
+			}
+			"lobby.state" -> {
+				val id = p["sid"]?.asString ?: return
+				if (id in lobby.sessions) return
+				val game = MinigameRegistry.byId(p["game"]?.asString ?: return) ?: return
+				val session = Session(id, game.id, from, msg.fromName)
+				session.joined.putAll(readPlayers(p["joined"]?.asJsonArray))
+				session.joined.putIfAbsent(from, msg.fromName)
+				p["ready"]?.asJsonArray?.forEach { runCatching { session.ready += UUID.fromString(it.asString) } }
+				p["playing"]?.asJsonArray?.forEach { runCatching { session.playing += UUID.fromString(it.asString) } }
+				lobby.sessions[id] = session
+			}
+			else -> lobby.active?.let { active ->
+				// Game traffic: only for the running game of the same room.
+				if (p["_s"]?.asString == active.session && from in active.members) active.onMessage(msg)
+			}
 		}
 	}
 
-	private fun startGame(lobby: Lobby, game: Minigame, host: UUID, players: Map<UUID, String>) {
+	/** [player] leaves every room of [lobby] (one room per player), except [except]. */
+	private fun leaveAll(lobby: Lobby, player: UUID, except: String? = null) {
+		for (s in lobby.sessions.values.toList()) if (s.id != except && player in s.joined) removeFrom(lobby, s, player)
+	}
+
+	private fun removeFrom(lobby: Lobby, s: Session, player: UUID) {
+		s.joined.remove(player); s.ready.remove(player); s.playing.remove(player)
+		if (player == s.host || s.joined.isEmpty()) {
+			lobby.sessions.remove(s.id)
+			if (invite?.sessionId == s.id) invite = null
+		}
+	}
+
+	private fun stateJson(s: Session) = sid(s.id).apply {
+		addProperty("game", s.gameId)
+		add("joined", playersJson(s.joined))
+		add("ready", JsonArray().apply { s.ready.forEach { add(it.toString()) } })
+		add("playing", JsonArray().apply { s.playing.forEach { add(it.toString()) } })
+	}
+
+	private fun startGame(lobby: Lobby, session: Session, game: Minigame, players: Map<UUID, String>) {
 		if (CombatGuard.blocked) {
 			Chat.info("§c${game.name} started, but you're in combat – skipped (Pause in Combat).")
-			lobby.room.send("lobby.quit")
+			lobby.room.send("lobby.quit", sid(session.id))
 			return
 		}
 		lobby.active?.leave()
-		val room = LobbyRoom(lobby.room, host, players) { r ->
+		val room = LobbyRoom(lobby.room, session.host, players, session.id) { r ->
 			if (lobby.active === r) {
 				lobby.active = null
-				lobby.room.send("lobby.quit")
+				lobby.room.send("lobby.quit", sid(session.id))
 			}
 		}
 		lobby.active = room
@@ -325,16 +384,14 @@ object MinigameHub {
 		game.open(room)
 	}
 
-	private fun offerInvite(lobby: Lobby, game: Minigame) {
+	private fun offerInvite(lobby: Lobby, session: Session, game: Minigame) {
 		if (!Minigames.enabled || !Minigames.invites.value || CombatGuard.blocked) return
-		val inviteId = lobby.inviteId ?: return
-		if (invite?.inviteId == inviteId) return
-		invite = Invite(lobby, game.id, inviteId, lobby.hostName, System.currentTimeMillis())
-		val accept = Component.literal("§a§l[Accept]").withStyle { s ->
-			s.withClickEvent(ClickEvent.RunCommand("/sp games accept"))
+		invite = Invite(lobby, session.id, game.id, session.hostName, System.currentTimeMillis())
+		val accept = Component.literal("§a§l[Join]").withStyle { st ->
+			st.withClickEvent(ClickEvent.RunCommand("/sp games accept"))
 				.withHoverEvent(HoverEvent.ShowText(Component.literal("Join ${game.name}")))
 		}
-		val text = Component.literal("${Chat.PREFIX}§f${lobby.hostName} §7invited you to §b${game.name}§7. ")
+		val text = Component.literal("${Chat.PREFIX}§f${session.hostName} §7opened §b${game.name}§7. ")
 			.append(accept)
 			.append(Component.literal(" §8(/sp games accept)"))
 		mc.player?.sendSystemMessage(text)
@@ -388,6 +445,11 @@ object MinigameHub {
 			))
 			root
 		}
+	}
+
+	/** Tests only: feed a lobby message as if [name] had sent it. */
+	fun debugMessage(type: String, payload: JsonObject, from: UUID, name: String) {
+		lobby?.let { handle(it, Net.Message(type, payload, from, name)) }
 	}
 
 	const val INVITE_TIMEOUT_MS = 60_000L

@@ -228,6 +228,15 @@ class PriceScreen(val room: LobbyRoom) : GameScreen("Price Guess") {
 
 	private fun drawGameOver(g: GuiGraphicsExtractor, cx: Int, y: Int, mx: Int, my: Int) {
 		val best = MinigameStore.best(PriceGuess.id)
+		if (!room.solo) {
+			// Everyone plays until their first miss; the longest streak wins once all are out.
+			val waiting = room.members.count { it !in scores }
+			val top = scores.values.maxOrNull() ?: 0
+			val leaders = scores.filterValues { it == top }.keys.map { if (it == Net.selfId) "You" else room.nameOf(it) }
+			val line = if (waiting > 0) "§7Waiting for $waiting player${if (waiting == 1) "" else "s"}… §8(leader: ${leaders.joinToString()} · $top)"
+			else "§6§l♛ ${leaders.joinToString(" & ")} ${if (leaders.size == 1 && leaders[0] != "You") "wins" else "win"} with $top!"
+			centered(g, line, cx, y - 12, Theme.TEXT)
+		}
 		centered(g, if (newBest) "§e§l✦ New personal best! ✦" else "§7Best: §f${best?.display ?: "-"}", cx, y, Theme.TEXT)
 		if (reward > 0) centered(g, "§6+$reward Tokens", cx, y + 11, Theme.TEXT)
 		if (room.solo || room.isHost) {

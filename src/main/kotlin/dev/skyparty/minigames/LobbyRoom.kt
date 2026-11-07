@@ -17,6 +17,8 @@ class LobbyRoom internal constructor(
 	private val inner: Net.Room,
 	val host: UUID,
 	players: Map<UUID, String>,
+	/** Game room inside the lobby; added to every message ("_s") so parallel games never mix. */
+	val session: String?,
 	private val onLeave: (LobbyRoom) -> Unit,
 ) : Net.Room {
 	private val players = LinkedHashMap(players)
@@ -34,7 +36,10 @@ class LobbyRoom internal constructor(
 
 	fun nameOf(id: UUID): String = players[id] ?: "Player"
 
-	override fun send(type: String, payload: JsonObject) = inner.send(type, payload)
+	override fun send(type: String, payload: JsonObject) {
+		if (session != null) payload.addProperty("_s", session)
+		inner.send(type, payload)
+	}
 
 	override fun leave() = onLeave(this)
 
@@ -53,7 +58,7 @@ class LobbyRoom internal constructor(
 			else -> {
 				val members = room.members.ifEmpty { setOf(Net.selfId) }
 				val names = members.associateWith { if (it == Net.selfId) Net.selfName else "Player" }
-				val wrapped = LobbyRoom(room, members.minOrNull() ?: Net.selfId, names) { room.leave() }
+				val wrapped = LobbyRoom(room, members.minOrNull() ?: Net.selfId, names, null) { room.leave() }
 				room.onMessage = { wrapped.onMessage(it) }
 				wrapped
 			}
@@ -62,7 +67,7 @@ class LobbyRoom internal constructor(
 		/** Offline practice room: only you, loopback echo, ".rng" rolls generated locally. */
 		fun solo(gameId: String): LobbyRoom {
 			val inner = LoopbackTransport.join("solo:$gameId")
-			val room = LobbyRoom(inner, Net.selfId, mapOf(Net.selfId to Net.selfName)) { inner.leave() }
+			val room = LobbyRoom(inner, Net.selfId, mapOf(Net.selfId to Net.selfName), null) { inner.leave() }
 			inner.onMessage = { room.onMessage(it) }
 			return room
 		}

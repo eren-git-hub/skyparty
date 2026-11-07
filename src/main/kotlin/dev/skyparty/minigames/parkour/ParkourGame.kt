@@ -488,21 +488,34 @@ class ParkourScreen(val room: LobbyRoom, private val fixedSeed: Long?) : GameScr
 
 	private fun drawResults(g: GuiGraphicsExtractor, cx: Int, y: Int, mx: Int, my: Int) {
 		val rows = finished.entries.sortedBy { it.value }
-		val h = 46 + rows.size * 11
+		val running = room.members.filter { it !in finished }
+		val headline = if (room.solo) 0 else 14
+		val h = 46 + headline + (rows.size + running.size) * 11
 		panel(g, cx - 90, y, 180, h, "Finish!")
+		// Winner: the fastest finisher (the first one to cross the line).
+		if (!room.solo) rows.firstOrNull()?.let { (id, _) ->
+			centered(g, if (id == Net.selfId) "§6§l♛ You win!" else "§6§l♛ ${room.nameOf(id)} wins!", cx, y + 20, Theme.TEXT)
+		}
+		val ly = y + 20 + headline
 		rows.forEachIndexed { i, (id, s) ->
 			val medal = when (i) { 0 -> GameColors.GOLD; 1 -> GameColors.SILVER; 2 -> GameColors.BRONZE; else -> Theme.TEXT }
-			g.text(font, "${i + 1}. ${room.nameOf(id)}", cx - 82, y + 20 + i * 11, medal, false)
+			g.text(font, "${i + 1}. ${room.nameOf(id)}", cx - 82, ly + i * 11, medal, false)
 			val t = formatTime(s)
-			g.text(font, t, cx + 82 - font.width(t), y + 20 + i * 11, medal, false)
+			g.text(font, t, cx + 82 - font.width(t), ly + i * 11, medal, false)
 		}
-		if (newBest) centered(g, "§e✦ New personal best! ✦", cx, y + 22 + rows.size * 11, Theme.TEXT)
+		running.forEachIndexed { i, id ->
+			g.text(font, "§8–  ${room.nameOf(id)}", cx - 82, ly + (rows.size + i) * 11, Theme.TEXT, false)
+			g.text(font, "§8running…", cx + 82 - font.width("running…"), ly + (rows.size + i) * 11, Theme.TEXT, false)
+		}
+		if (newBest) centered(g, "§e✦ New personal best! ✦", cx, ly + 2 + (rows.size + running.size) * 11, Theme.TEXT)
 		val by = y + h - 18
 		if (room.solo) {
 			button(g, cx - 84, by, 80, 14, "Retry", mx, my) { reset(); countdownUntil = System.currentTimeMillis() + 2000; phase = Phase.COUNTDOWN }
 			button(g, cx + 4, by, 80, 14, "New course", mx, my) { startSolo((1..1_000_000).random().toLong()) }
-		} else if (room.isHost) {
-			button(g, cx - 40, by, 80, 14, "Race again", mx, my) { room.send("parkour.start.rng", JsonObject()) }
+		} else {
+			if (room.isHost) button(g, cx - 84, by, 80, 14, "Race again", mx, my) { room.send("parkour.start.rng", JsonObject()) }
+			else centered(g, "§7Waiting for the host…", cx - 44, by + 3, Theme.TEXT)
+			button(g, cx + 4, by, 80, 14, "Leave", mx, my, color = GameColors.RED) { onClose() }
 		}
 	}
 
