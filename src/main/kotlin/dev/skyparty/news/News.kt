@@ -126,8 +126,56 @@ object News {
 			d
 		}.getOrNull()
 	}
+	// ------------------------------------------------------------------ full articles
+
+	/** Full article text per link; the feeds only carry a teaser ending in "Read more". */
+	private val articles = java.util.concurrent.ConcurrentHashMap<String, String>()
+	private val articleLoading = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+	private val articleFailed = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+
+	/** Text to show for [item]: the full first post once loaded (starts loading it on first call). */
+	fun articleText(item: Item): String {
+		articles[item.link]?.let { return it }
+		if (item.link.startsWith("https://hypixel.net/") && item.link !in articleFailed && articleLoading.add(item.link)) {
+			fetch(item.link).thenApply { firstPost(it) ?: error("no post found") }.whenComplete { html, t ->
+				if (html != null) articles[item.link] = htmlToText(html)
+				else {
+					Skyparty.LOGGER.warn("News article {} failed: {}", item.link, t?.message)
+					articleFailed += item.link
+				}
+				articleLoading -= item.link
+			}
+		}
+		val teaser = item.text.replace(Regex("\\s*Read more\\s*$"), "")
+		return when {
+			item.link in articleLoading -> "$teaser\n§8Loading the full article…"
+			item.link in articleFailed -> "$teaser\n§8Couldn't load the full article. Use \"Open in browser\"."
+			else -> teaser
+		}
+	}
+
+	/** Inner HTML of the thread's first post (XenForo: the first <div class="bbWrapper">, nested divs balanced). */
+	fun firstPost(page: String): String? {
+		val open = "<div class=\"bbWrapper\">"
+		val start = page.indexOf(open).takeIf { it >= 0 } ?: return null
+		val tag = Regex("(?i)<(/?)div\\b")
+		var depth = 1
+		var pos = start + open.length
+		while (depth > 0) {
+			val m = tag.find(page, pos) ?: return null
+			depth += if (m.groupValues[1].isEmpty()) 1 else -1
+			if (depth == 0) return page.substring(start + open.length, m.range.first)
+			pos = m.range.last + 1
+		}
+		return null
+	}
+
 	/** Very small HTML → text: line breaks for block tags and list items, entities decoded. */
 	fun htmlToText(html: String): String = html
+		.replace(Regex("(?is)<(script|style)\\b.*?</\\1>"), "")
+		.replace(Regex("(?is)<div class=\"bbImageWrapper.*?</div>"), "")
+		.replace(Regex("(?i)<h\\d[^>]*>"), "\n\n§6§l")
+		.replace(Regex("(?i)</h\\d>"), "\n")
 		.replace(Regex("(?i)<br\\s*/?>"), "\n")
 		.replace(Regex("(?i)</(p|div|h\\d|ul|ol)>"), "\n")
 		.replace(Regex("(?i)<li[^>]*>"), "\n• ")
@@ -217,7 +265,7 @@ class NewsScreen : GameScreen("News") {
 		g.text(font, "§8" + (item.date?.format(DateTimeFormatter.ofPattern("EEEE, MMM d yyyy", java.util.Locale.ENGLISH)) ?: ""), dx + 6, ty + 4, Theme.TEXT, false)
 		ty += 18
 		g.fill(dx + 6, ty - 3, dx + dw - 6, ty - 2, GameColors.LINE)
-		val lines = item.text.split('\n').flatMap { font.split(Component.literal(it), dw - 14) }
+		val lines = News.articleText(item).split('\n').flatMap { font.split(Component.literal(it), dw - 14) }
 		val textH = y + h - ty - 4
 		maxText = (lines.size * 10 - textH).coerceAtLeast(0)
 		textScroll = textScroll.coerceIn(0, maxText)
