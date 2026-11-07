@@ -6,7 +6,7 @@ import dev.skyparty.module.Module
 object CustomPets : Module(
 	id = "custom_pets",
 	name = "Custom Pets",
-	description = "Your 3D pet, grows with active SkyBlock playtime. Command: /sl pet",
+	description = "Your 3D pet that follows you around. Others with Skyparty see it too.",
 	category = Category.PETS,
 	defaultEnabled = true,
 ) {

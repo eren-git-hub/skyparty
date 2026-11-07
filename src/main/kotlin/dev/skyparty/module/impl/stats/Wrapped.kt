@@ -6,7 +6,7 @@ import dev.skyparty.module.Module
 object Wrapped : Module(
 	id = "wrapped",
 	name = "SkyBlock Wrapped",
-	description = "Weekly, monthly and yearly recap. (WIP)",
+	description = "Weekly, monthly and yearly recap of your SkyBlock play. Command: /sp wrapped",
 	category = Category.STATS,
 	defaultEnabled = true,
 ) {

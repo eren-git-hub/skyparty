@@ -3,7 +3,6 @@ package dev.skyparty.pet.scoreboard
 import dev.skyparty.module.impl.pets.CustomPets
 import dev.skyparty.module.impl.pets.ScoreboardPet
 import dev.skyparty.pet.PetData
-import dev.skyparty.pet.PetStage
 import dev.skyparty.util.ColorUtil
 import net.minecraft.client.DeltaTracker
 import net.minecraft.client.Minecraft
@@ -24,6 +23,14 @@ object ScoreboardPetHud {
 
 	private class Floater(val text: String, var x: Float, var y: Float, val color: Int, var age: Int = 0)
 	private class Ball(var x: Float, var height: Float, var vx: Float = 0f, var vy: Float = 0f, var life: Int = 400)
+	private class Food(var x: Float, var height: Float, var vy: Float = 0f, var life: Int = 600)
+
+	private var food: Food? = null
+	private var lastFedAt = 0L
+
+	/** Number of snacks eaten this session, shown in the name tag. */
+	var snacks = 0
+		private set
 
 	private var mode = Mode.IDLE
 	private var modeTicks = 60
@@ -53,7 +60,6 @@ object ScoreboardPetHud {
 
 	private val mc get() = Minecraft.getInstance()
 	private val pixel get() = ScoreboardPet.size.floatValue
-	private val stage get() = PetData.stage
 
 	// ---------------------------------------------------------------- ticking
 
@@ -66,6 +72,7 @@ object ScoreboardPetHud {
 
 		detectDeath()
 		tickBall(b)
+		tickFood()
 		floaters.removeAll { it.age++ > 30 }
 		floaters.forEach { it.y -= 0.6f }
 
@@ -94,17 +101,34 @@ object ScoreboardPetHud {
 
 	private fun tickBehaviour(minX: Float, maxX: Float) {
 		val speed = 0.6f * ScoreboardPet.speed.floatValue * pixel
-		val canMove = stage != PetStage.EGG
 
-		if (PetData.isAfk && mode != Mode.SLEEP) setMode(Mode.SLEEP, Int.MAX_VALUE)
+		if (PetData.isAfk && food == null && mode != Mode.SLEEP) setMode(Mode.SLEEP, Int.MAX_VALUE)
 		if (mode == Mode.SLEEP) {
-			if (!PetData.isAfk) setMode(Mode.IDLE, 20)
+			if (!PetData.isAfk || food != null) setMode(Mode.IDLE, 20)
 			else if (age % 25 == 0) floaters += Floater("z", x + spriteW * pixel, topY() - 2, 0xFFB0C4FF.toInt())
 			return
 		}
 
+		val food = food
+		if (food != null && mode != Mode.HAPPY && mode != Mode.SCARED) {
+			// Run to the snack and eat it once it is on the ground.
+			mode = Mode.CHASE
+			val center = x + spriteW * pixel / 2
+			val diff = food.x - center
+			if (abs(diff) > speed * 1.5f) {
+				facingRight = diff > 0
+				x += speed * 1.8f * Mth.sign(diff.toDouble()).toFloat()
+			} else if (food.height <= 0f) {
+				this.food = null
+				snacks++
+				floaters += Floater("nom!", x, topY() - 2, 0xFFFFD27F.toInt())
+				setMode(Mode.HAPPY, 50)
+			}
+			return
+		}
+
 		val ball = ball
-		if (ball != null && canMove && mode != Mode.HAPPY && mode != Mode.SCARED) {
+		if (ball != null && mode != Mode.HAPPY && mode != Mode.SCARED) {
 			mode = Mode.CHASE
 			val center = x + spriteW * pixel / 2
 			val diff = ball.x - center
@@ -122,7 +146,7 @@ object ScoreboardPetHud {
 
 		when (mode) {
 			Mode.HAPPY -> {
-				if (height <= 0f && canMove) vy = 2.6f // little hops
+				if (height <= 0f) vy = 2.6f // little hops
 				applyGravity()
 				if (age % 6 == 0) floaters += Floater("❤", x + spriteW * pixel / 2, topY(), 0xFFFF6B8A.toInt())
 			}
@@ -140,7 +164,7 @@ object ScoreboardPetHud {
 		}
 
 		if (--modeTicks <= 0) {
-			if (canMove && Random.nextInt(3) != 0 && maxX > minX + 4) {
+			if (Random.nextInt(3) != 0 && maxX > minX + 4) {
 				targetX = minX + Random.nextFloat() * (maxX - minX)
 				setMode(Mode.WALK, 400)
 			} else {
@@ -173,6 +197,35 @@ object ScoreboardPetHud {
 			ball.vx = -ball.vx * 0.6f
 		}
 		if (--ball.life <= 0) this.ball = null
+	}
+
+	private fun tickFood() {
+		val food = food ?: return
+		if (food.height > 0f) {
+			food.vy -= 0.35f
+			food.height = (food.height + food.vy).coerceAtLeast(0f)
+		}
+		if (--food.life <= 0) this.food = null
+	}
+
+	/**
+	 * Drops a snack onto the scoreboard; the pet runs over and eats it. Returns false when there is no
+	 * scoreboard pet on screen right now (module off or no sidebar) or a snack is still on its way.
+	 */
+	val visible get() = ScoreboardPet.enabled && box != null
+
+	fun feed(): Boolean {
+		if (!ScoreboardPet.enabled) return false
+		val b = box ?: return false
+		val now = System.currentTimeMillis()
+		if (food != null || now - lastFedAt < 800) return false
+		lastFedAt = now
+		// The pet's center can only reach half a sprite in from either edge, so keep the snack within that.
+		val margin = spriteW * pixel / 2 + pixel
+		val left = b.left + margin
+		val right = (b.right - margin).coerceAtLeast(left)
+		food = Food(left + Random.nextFloat() * (right - left), 40f + Random.nextFloat() * 10f)
+		return true
 	}
 
 	private fun detectDeath() {
@@ -225,7 +278,7 @@ object ScoreboardPetHud {
 			return true
 		}
 		val inBox = px >= b.left && px <= b.right && py >= b.top - 20 && py <= b.bottom
-		if (inBox && button == 0 && stage != PetStage.EGG) {
+		if (inBox && button == 0) {
 			ball = Ball(px, (b.top - py).coerceAtLeast(6f))
 			return true
 		}
@@ -257,7 +310,7 @@ object ScoreboardPetHud {
 		if (!ScoreboardPet.enabled || currentBox == null) return
 		if (x.isNaN()) return
 
-		val sprites = PetSprites.sprites[stage] ?: return
+		val sprites = PetSprites.adult
 		val sprite = when {
 			mode == Mode.SLEEP -> sprites.sleep
 			mode == Mode.WALK || mode == Mode.CHASE -> sprites.walk[(age / 5) % sprites.walk.size]
@@ -280,10 +333,13 @@ object ScoreboardPetHud {
 			val h = Mth.lerp(partial, prevHeight, height)
 			drawY = currentBox.top - spriteH * pixel - h
 		}
-		if (stage == PetStage.EGG && (age / 30) % 4 == 0) drawX += sin((age + partial) * 1.2f) * pixel
 
 		drawSprite(g, sprite, drawX, drawY, pixel, facingRight)
 		ball?.let { drawSprite(g, PetSprites.BALL, it.x - 2 * pixel, currentBox.top - 4 * pixel - it.height, pixel, true) }
+		food?.let {
+			val fh = if (it.height > 0f) (it.height - it.vy * (1f - partial)).coerceAtLeast(0f) else 0f
+			drawSprite(g, PetSprites.FOOD, it.x - 2.5f * pixel, currentBox.top - 5 * pixel - fh, pixel, true)
+		}
 
 		val font = mc.font
 		for (f in floaters) {
@@ -296,7 +352,7 @@ object ScoreboardPetHud {
 			val mx = mc.mouseHandler.getScaledXPos(mc.window)
 			val my = mc.mouseHandler.getScaledYPos(mc.window)
 			if (mx >= drawX && mx <= drawX + spriteW * pixel && my >= drawY && my <= drawY + spriteH * pixel) {
-				val label = "${CustomPets.petName.value.ifBlank { "Pet" }} · ${stage.displayName}"
+				val label = CustomPets.petName.value.ifBlank { "Pet" }
 				val lx = (drawX + spriteW * pixel / 2 - font.width(label) / 2f).toInt()
 				g.text(font, label, lx, (drawY - 10).toInt(), 0xFFFFFFFF.toInt(), true)
 			}
@@ -328,6 +384,8 @@ object ScoreboardPetHud {
 			'A' to (CustomPets.accentColor.value or 0xFF000000.toInt()),
 			'W' to 0xFFF3E9D2.toInt(),
 			'E' to 0xFF1A1A22.toInt(),
+			'M' to 0xFFC8743A.toInt(),
+			'm' to 0xFF8E4A22.toInt(),
 		)
 	}
 }

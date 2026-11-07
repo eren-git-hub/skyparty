@@ -1,7 +1,6 @@
 package dev.skyparty
 
 import com.mojang.blaze3d.platform.InputConstants
-import com.mojang.brigadier.arguments.DoubleArgumentType
 import dev.skyparty.config.ConfigManager
 import dev.skyparty.core.Features
 import dev.skyparty.core.SkypartyCommands
@@ -10,7 +9,6 @@ import dev.skyparty.module.impl.pets.CustomPets
 import dev.skyparty.pet.PetController
 import dev.skyparty.pet.PetData
 import dev.skyparty.pet.PetRenderer
-import dev.skyparty.pet.PetStage
 import dev.skyparty.pet.scoreboard.ScoreboardPetHud
 import dev.skyparty.minigames.ui.HubScreen
 import dev.skyparty.util.Chat
@@ -40,6 +38,8 @@ object Skyparty : ClientModInitializer {
 
 	private val category = KeyMapping.Category.register(Identifier.fromNamespaceAndPath(MOD_ID, "main"))
 	private lateinit var openGuiKey: KeyMapping
+	lateinit var feedPetKey: KeyMapping
+		private set
 
 	/** Screen to open on the next tick (commands run while the chat screen is still closing). */
 	private var pendingScreen: Screen? = null
@@ -53,13 +53,15 @@ object Skyparty : ClientModInitializer {
 			KeyMapping("key.skyparty.clickgui", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_RIGHT_SHIFT, category)
 		)
 
+		feedPetKey = KeyMappingHelper.registerKeyMapping(
+			KeyMapping("key.skyparty.feed_pet", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_G, category)
+		)
+
 		ConfigManager.load()
-		PetData.load()
 
 		ClientTickEvents.END_CLIENT_TICK.register(::onTick)
 		ClientLifecycleEvents.CLIENT_STOPPING.register {
 			ConfigManager.save()
-			PetData.save()
 		}
 
 		// Pets: 3D pet in the world + 2D pet on the scoreboard
@@ -94,16 +96,6 @@ object Skyparty : ClientModInitializer {
 					sendPetInfo()
 					1
 				}
-				if (Location.isDev) {
-					// Testing helper: /sp pet hours <h> jumps to a playtime to preview stages.
-					pet.then(ClientCommands.literal("hours").then(
-						ClientCommands.argument("h", DoubleArgumentType.doubleArg(0.0)).executes { ctx ->
-							PetData.setPlaytime((DoubleArgumentType.getDouble(ctx, "h") * 3_600_000).toLong())
-							sendPetInfo()
-							1
-						}
-					))
-				}
 				val root = ClientCommands.literal(name)
 					.executes {
 						pendingScreen = HubScreen()
@@ -117,21 +109,10 @@ object Skyparty : ClientModInitializer {
 	}
 
 	private fun sendPetInfo() {
-		val stage = PetData.stage
 		val name = CustomPets.petName.value.ifBlank { "Your pet" }
-		Chat.info("§f$name §7– §e${stage.displayName}")
-		Chat.raw("§7Active playtime: §f${PetData.formatDuration(PetData.playtimeMs)}")
-		stage.next?.let { next ->
-			val pct = (PetStage.progress(PetData.playtimeMs) * 100).toInt()
-			val left = next.millis - PetData.playtimeMs
-			Chat.raw("§7Next stage: §f${next.displayName} §7in §f${PetData.formatDuration(left)} §8($pct%)")
-		} ?: Chat.raw("§6Final stage reached!")
-		val counting = when {
-			PetData.isAfk -> "§cpaused (AFK)"
-			Location.inSkyBlockOrDev -> "§arunning"
-			else -> "§cpaused (not in SkyBlock)"
-		}
-		Chat.raw("§7Counter: $counting")
+		Chat.info("§f$name §7follows you around. Others with Skyparty see it too.")
+		Chat.raw("§7Change its name and colors in §f/sp §7→ §f❀ Pets§7.")
+		Chat.raw("§7Press §f" + feedPetKey.translatedKeyMessage.string + " §7to feed your scoreboard pet.")
 	}
 
 	private fun onTick(mc: Minecraft) {
@@ -139,12 +120,22 @@ object Skyparty : ClientModInitializer {
 			pendingScreen = null
 			mc.gui.setScreen(it)
 		}
+		while (feedPetKey.consumeClick()) {
+			val why = when {
+				!dev.skyparty.module.impl.pets.ScoreboardPet.enabled -> "turn on Scoreboard Pet in the settings first"
+				!ScoreboardPetHud.visible -> "no scoreboard on screen"
+				else -> null
+			}
+			if (why == null) ScoreboardPetHud.feed()
+			else if (mc.gui.screen() == null) Chat.info("§7Can't feed your pet: $why")
+		}
 		while (openGuiKey.consumeClick()) {
 			if (mc.gui.screen() == null) mc.gui.setScreen(HubScreen())
 		}
 		ModuleManager.tick(mc)
 		PetData.tick(mc)
 		PetController.tick(mc)
+		dev.skyparty.pet.RemotePets.tick(mc)
 		ScoreboardPetHud.tick()
 	}
 }

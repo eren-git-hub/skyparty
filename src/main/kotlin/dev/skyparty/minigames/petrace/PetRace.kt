@@ -11,7 +11,6 @@ import dev.skyparty.minigames.ui.GameScreen
 import dev.skyparty.minigames.ui.PetDraw
 import dev.skyparty.module.impl.pets.CustomPets
 import dev.skyparty.net.Net
-import dev.skyparty.pet.PetStage
 import dev.skyparty.pet.scoreboard.PetSprites
 import dev.skyparty.ui.Theme
 import dev.skyparty.util.ColorUtil
@@ -283,7 +282,7 @@ class PetRaceScreen(val room: LobbyRoom) : GameScreen("Pet Race") {
 			val ly = y + i * laneH
 			if (i % 2 == 1) g.fill(x + 1, ly, x + w - 1, ly + laneH, 0x18FFFFFF)
 			if (i > 0) for (dx in x + 4 until x + w - 4 step 10) g.fill(dx, ly, dx + 5, ly + 1, 0x50FFFFFF)
-			val sprites = PetSprites.sprites[PetStage.ADULT]!!
+			val sprites = PetSprites.adult
 			val moving = phase == Phase.RACING && !r.finished
 			val frame = if (moving) sprites.walk[((now / 130 + i) % sprites.walk.size).toInt()] else sprites.idle
 			val sw = frame.width * scale
@@ -407,7 +406,7 @@ class PetRaceScreen(val room: LobbyRoom) : GameScreen("Pet Race") {
 			g.fill(bx, baseY - blockH, bx + colW, baseY, ColorUtil.shade(color, 0.55f))
 			g.fill(bx, baseY - blockH, bx + colW, baseY - blockH + 2, color)
 			centered(g, "${idx + 1}", cx, baseY - blockH + 5, color)
-			val sprite = PetSprites.sprites[PetStage.ADULT]!!.idle
+			val sprite = PetSprites.adult.idle
 			val bounce = if (idx == 0) (Math.abs(Math.sin(System.currentTimeMillis() / 180.0)) * -3).toFloat() else 0f
 			PetDraw.draw(g, sprite, cx - sprite.width.toFloat(), baseY - blockH - sprite.height * 2f - 1 + bounce, 2f, true, r.colors)
 			val name = font.plainSubstrByWidth(r.name, colW + 4)

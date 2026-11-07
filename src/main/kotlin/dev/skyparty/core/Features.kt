@@ -13,6 +13,7 @@ object Features {
 		{ dev.skyparty.minigames.chess.ChessGame.init() },
 		{ dev.skyparty.minigames.parkour.ParkourGame.init() },
 		{ dev.skyparty.reminders.Reminders.init() },
+		{ dev.skyparty.stats.StatsFeature.init() },
 		{
 			for ((cmd, tab) in listOf("dle" to dev.skyparty.minigames.ui.HubTabs.DLE, "news" to dev.skyparty.minigames.ui.HubTabs.NEWS)) {
 				SkypartyCommands.sub { net.fabricmc.fabric.api.client.command.v2.ClientCommands.literal(cmd).executes { dev.skyparty.Skyparty.openNextTick(dev.skyparty.minigames.ui.HubTabs.open(tab)); 1 } }

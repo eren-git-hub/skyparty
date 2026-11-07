@@ -1,6 +1,5 @@
 package dev.skyparty.pet.scoreboard
 
-import dev.skyparty.pet.PetStage
 
 /**
  * Hand-made pixel art, facing right. Characters map to colors at draw time so the sprite
@@ -26,32 +25,6 @@ class StageSprites(val walk: List<Sprite>) {
 }
 
 object PetSprites {
-	private val EGG = Sprite(
-		listOf(
-			"..KKKK..",
-			".KWWWWK.",
-			"KWWBWWWK",
-			"KWWWWWBK",
-			"KWBWWWWK",
-			"KWWWWBWK",
-			"KWWWWWWK",
-			".KWWWWK.",
-			"..KKKK..",
-		)
-	)
-
-	private val HATCHLING_BODY = listOf(
-		"..W.W.W..",
-		".KWWWWWK.",
-		"KBBBBBBBK",
-		"KBBBBBEBK",
-		"KBBBBBBAA",
-		"KBSSBBBK.",
-		"KBSSSBBK.",
-		".KBBBBK..",
-		"..KKKK...",
-	)
-
 	private val JUVENILE_TOP = listOf(
 		"...........A.A..",
 		"..........KKKKK.",
@@ -66,8 +39,6 @@ object PetSprites {
 	private val LEGS_A = listOf("....KSK...KSK...", "....KK....KK....")
 	private val LEGS_B = listOf(".....KSK.KSK....", ".....KK..KK.....")
 
-	private fun juvenile(legs: List<String>) =
-		Sprite(JUVENILE_TOP + "KAK.......KBEBK." + JUVENILE_MID + legs)
 
 	/** Rows 1-2 of the adult with the wing folded into the back (up / down flap frames). */
 	private val WING_UP = listOf("....AAA...KKKKK.", "AA.AAAAA..KBBBK.")
@@ -76,17 +47,10 @@ object PetSprites {
 	private fun adult(wing: List<String>, legs: List<String>) =
 		Sprite(listOf(JUVENILE_TOP[0]) + wing + "KAK..A.A..KBEBK." + JUVENILE_MID + legs)
 
-	val sprites: Map<PetStage, StageSprites> = mapOf(
-		PetStage.EGG to StageSprites(listOf(EGG)),
-		PetStage.HATCHLING to StageSprites(
-			listOf(
-				Sprite(HATCHLING_BODY + "..A..A..."),
-				Sprite(HATCHLING_BODY + "...A.A..."),
-			)
-		),
-		PetStage.JUVENILE to StageSprites(listOf(juvenile(LEGS_A), juvenile(LEGS_B))),
-		PetStage.ADULT to StageSprites(listOf(adult(WING_UP, LEGS_A), adult(WING_DOWN, LEGS_B))),
-	)
+	val adult = StageSprites(listOf(adult(WING_UP, LEGS_A), adult(WING_DOWN, LEGS_B)))
+
+	/** Food for the feed key: a little drumstick (5x5). */
+	val FOOD = Sprite(listOf("...WW", "..MWW", ".MMM.", "MMMm.", ".mm.."))
 
 	/** Small 4x4 ball for the throw interaction. */
 	val BALL = Sprite(listOf(".AA.", "AWAA", "AAAA", ".AA."))
