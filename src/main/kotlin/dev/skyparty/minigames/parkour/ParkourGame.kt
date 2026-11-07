@@ -202,7 +202,8 @@ class ParkourScreen(val room: LobbyRoom, private val fixedSeed: Long?) : GameScr
 				Outcome.FINISHED -> { finish(); return }
 				Outcome.NONE -> {}
 			}
-			if (!room.solo && steps % 6 == 0) {
+			// 4 updates/s: the server allows 5 messages/s per player and room (shared with lobby, wheel, pings).
+			if (!room.solo && steps % 15 == 0) {
 				room.send("parkour.state", JsonObject().apply {
 					addProperty("x", state.x / FP.toFloat()); addProperty("y", state.y / FP.toFloat())
 					addProperty("f", state.facing); addProperty("a", if (state.grounded && state.vx != 0) 1 else 0)
@@ -263,7 +264,7 @@ class ParkourScreen(val room: LobbyRoom, private val fixedSeed: Long?) : GameScr
 			if (f != null && phase != Phase.WAITING) drawSkin(g, selfSkin(), f.x / FP.toFloat(), f.y / FP.toFloat(), f.facing, steps, 0x66FFFFFF, "§7PB ghost")
 		}
 		for ((id, r) in others) {
-			val t = ((System.currentTimeMillis() - r.at) / 300f).coerceIn(0f, 1f)
+			val t = ((System.currentTimeMillis() - r.at) / 250f).coerceIn(0f, 1f)
 			drawSkin(g, skinOf(id), r.px + (r.x - r.px) * t, r.py + (r.y - r.py) * t, r.facing, if (r.anim == 1) (System.currentTimeMillis() / 16).toInt() else 0,
 				0xAAFFFFFF.toInt(), room.nameOf(id))
 		}

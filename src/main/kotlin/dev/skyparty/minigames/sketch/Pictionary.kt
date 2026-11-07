@@ -243,9 +243,9 @@ class PictionaryScreen(val room: LobbyRoom) : GameScreen("Skyblock Pictionary") 
 		}
 	}
 
-	/** Sends painted cells in batches (at most ~6 messages/s, well under the server's rate limit). */
+	/** Sends painted cells in batches (at most ~3 messages/s, well under the server's rate limit). */
 	private fun flush(force: Boolean = false) {
-		if (pending.isEmpty() || (!force && now() - lastFlush < 160)) return
+		if (pending.isEmpty() || (!force && now() - lastFlush < 300)) return
 		lastFlush = now()
 		if (!room.solo) for (chunk in pending.chunked(400)) {
 			val arr = JsonArray().apply { chunk.forEach { add(it) } }

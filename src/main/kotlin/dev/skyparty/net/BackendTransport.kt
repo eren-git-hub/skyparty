@@ -49,6 +49,9 @@ object BackendTransport : Net.Transport {
 
 	private const val PING_SECONDS = 30L
 	private const val MAX_QUEUED = 32
+	/** Kept below the server's limits (burst 20, 5/s) so a busy game can never get us banned from a room. */
+	private const val PACE_BURST = 15.0
+	private const val PACE_PER_SECOND = 4.2
 	private val log get() = Skyparty.LOGGER
 
 	private val io = Executors.newSingleThreadScheduledExecutor { r -> Thread(r, "Skyparty-Net").apply { isDaemon = true } }
@@ -360,10 +363,12 @@ object BackendTransport : Net.Transport {
 					Minecraft.getInstance().execute { onMessage(msg) }
 					return
 				}
-				this@RoomConnection.send(JsonObject().apply {
+				val text = JsonObject().apply {
 					addProperty("type", type)
 					add("payload", payload)
-				}.toString())
+				}.toString()
+				// Position updates only matter in their newest version: a queued older one is replaced.
+				this@RoomConnection.paced(text, coalesceKey = type.takeIf { it.endsWith(".state") })
 			}
 
 			override fun leave() {
@@ -424,6 +429,45 @@ object BackendTransport : Net.Transport {
 			ws?.let { send("ping") }
 		}
 
+		// ---- client-side rate limit ----------------------------------------------------------------
+		// The server allows a burst of 20 and 5 messages/s per player and room; going over it earns strikes
+		// and finally a 10-minute ban from that room (that is what broke the party room after a parkour race).
+		// So we stay below it ourselves: extra messages wait a moment instead of being sent.
+		private var tokens = PACE_BURST
+		private var tokenAt = System.nanoTime()
+		private val waiting = ArrayDeque<Pair<String?, String>>()
+		private var drainTask: ScheduledFuture<*>? = null
+
+		private fun refill() {
+			val now = System.nanoTime()
+			tokens = min(PACE_BURST, tokens + (now - tokenAt) / 1e9 * PACE_PER_SECOND)
+			tokenAt = now
+		}
+
+		@Synchronized
+		fun paced(text: String, coalesceKey: String? = null) {
+			refill()
+			if (waiting.isEmpty() && tokens >= 1) {
+				tokens -= 1
+				send(text)
+				return
+			}
+			if (coalesceKey != null) waiting.removeAll { it.first == coalesceKey }
+			waiting.addLast(coalesceKey to text)
+			while (waiting.size > MAX_QUEUED) waiting.removeFirst()
+			if (drainTask?.isDone != false) drainTask = io.schedule({ drain() }, 120, TimeUnit.MILLISECONDS)
+		}
+
+		@Synchronized
+		private fun drain() {
+			refill()
+			while (waiting.isNotEmpty() && tokens >= 1) {
+				tokens -= 1
+				send(waiting.removeFirst().second)
+			}
+			if (waiting.isNotEmpty()) drainTask = io.schedule({ drain() }, 120, TimeUnit.MILLISECONDS)
+		}
+
 		fun send(text: String) {
 			synchronized(this) {
 				if (ws == null) {
@@ -465,7 +509,20 @@ object BackendTransport : Net.Transport {
 				log.debug("Skyparty room {} closed: {} {}", id, code, reason)
 				when (code) {
 					4000 -> return // replaced by a newer connection of ours: do not fight over the slot
-					4003, 4008, 4009 -> scheduleReconnect(60_000) // banned / kicked / full
+					4003, 4008, 4009 -> {
+						// banned / kicked / full: say so instead of failing silently
+						if (code != 4009) {
+							val what = when {
+								id.startsWith("party:") -> "your party room"
+								id.startsWith("code:") -> "room ${id.removePrefix("code:")}"
+								else -> null
+							}
+							if (what != null) Minecraft.getInstance().execute {
+								dev.skyparty.util.Chat.info("§cThe Skyparty server blocked you from $what for a few minutes (too many messages). It reconnects by itself.")
+							}
+						}
+						scheduleReconnect(60_000)
+					}
 					else -> scheduleReconnect()
 				}
 			}

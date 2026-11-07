@@ -188,8 +188,12 @@ export class Room extends DurableObject<Env> {
 
 	private strike(ws: WebSocket, a: Attachment, weight: number) {
 		const now = Date.now();
-		a.strikes = Math.max(0, a.strikes - Math.floor((now - a.strikeAt) / STRIKE_DECAY_MS)) + weight;
-		a.strikeAt = now;
+		// Forgive one strike per full second since the last forgiveness. (Resetting the clock on every strike
+		// meant steady light overuse was never forgiven at all and always ended in a ban.)
+		const forgiven = Math.floor((now - a.strikeAt) / STRIKE_DECAY_MS);
+		const left = Math.max(0, a.strikes - forgiven);
+		a.strikeAt = left === 0 ? now : a.strikeAt + forgiven * STRIKE_DECAY_MS;
+		a.strikes = left + weight;
 		ws.serializeAttachment(a);
 		if (a.strikes >= STRIKES_TO_BAN) {
 			const until = now + BAN_MS;
