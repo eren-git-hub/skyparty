@@ -5,6 +5,8 @@
 	"main": "src/index.ts",
 	"compatibility_date": "2026-10-01",
 	"workers_dev": true,
+	// No per-version preview URLs: only the main workers.dev address is reachable.
+	"preview_urls": false,
 	// Free plan: Durable Objects must be SQLite-backed (new_sqlite_classes).
 	"durable_objects": {
 		"bindings": [

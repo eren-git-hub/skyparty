@@ -19,9 +19,13 @@ object OnlineModule : Module(
 ) {
 	const val DEFAULT_URL = "https://skyparty-api.riqer123.workers.dev"
 
+	/** Earlier default addresses: a saved value equal to one of these is moved to [DEFAULT_URL]. */
+	private val OLD_DEFAULT_URLS = setOf<String>()
+
 	val serverUrl = text("Server URL", DEFAULT_URL, maxLength = 96, description = "Address of the Skyparty server")
 
 	override fun onTick() {
+		if (serverUrl.value.trimEnd('/') in OLD_DEFAULT_URLS) serverUrl.value = DEFAULT_URL
 		BackendTransport.update(true, serverUrl.value.ifBlank { DEFAULT_URL })
 		val wanted: Net.Transport = if (BackendTransport.connected) BackendTransport else LoopbackTransport
 		if (Net.transport !== wanted) Net.transport = wanted

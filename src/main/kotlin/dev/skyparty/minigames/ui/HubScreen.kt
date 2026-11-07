@@ -39,7 +39,7 @@ class HubScreen : GameScreen("Skyparty Games") {
 	private fun drawGames(g: GuiGraphicsExtractor, x: Int, y: Int, w: Int, h: Int, mx: Int, my: Int) {
 		listBox = intArrayOf(x, y, w, h)
 		val games = MinigameRegistry.all.toList()
-		val cardH = 46
+		val cardH = 56
 		val gap = 4
 		maxScroll = (games.size * (cardH + gap) - gap - h).coerceAtLeast(0)
 		scroll = scroll.coerceIn(0, maxScroll)
@@ -86,15 +86,22 @@ class HubScreen : GameScreen("Skyparty Games") {
 		g.text(font, "§l" + font.plainSubstrByWidth(game.name, textW - 4), textX, y + 6, Theme.TEXT, true)
 		val players = if (game.minPlayers == game.maxPlayers) "${game.minPlayers} players" else "${game.minPlayers}–${game.maxPlayers} players"
 		val tags = players + if (game.realtime) " · real-time" else " · turn-based"
-		g.text(font, font.plainSubstrByWidth(game.description, textW), textX, y + 18, Theme.TEXT_DIM, false)
+		// Description wraps onto two lines; anything longer ends in "…" and shows in full on hover.
+		val lines = wrapLines(game.description, textW)
+		for ((li, line) in lines.take(2).withIndex()) {
+			var text = line
+			if (li == 1 && lines.size > 2) text = font.plainSubstrByWidth(line, textW - font.width("…")).trimEnd() + "…"
+			g.text(font, text, textX, y + 17 + li * 10, Theme.TEXT_DIM, false)
+		}
+		if (lines.size > 2 && hover && mx < textX + textW) tooltip(game.description)
 		val best = MinigameStore.best(game.id)
 		val info = if (best != null) "§6Best: ${best.display}  §8$tags" else "§8$tags"
-		g.text(font, font.plainSubstrByWidth(info, textW), textX, y + 31, Theme.TEXT, false)
+		g.text(font, font.plainSubstrByWidth(info, textW), textX, y + 41, Theme.TEXT, false)
 
 		// Buttons only clickable when inside the visible list area.
 		val bx = x + w - btnW - 6
-		val soloY = y + 7
-		val partyY = y + 25
+		val soloY = y + 10
+		val partyY = y + 30
 		val lobby = MinigameHub.lobby
 		val blocked = CombatGuard.blocked
 		if (soloY >= visibleTop && soloY + 14 <= visibleBottom) {
@@ -228,6 +235,21 @@ class HubScreen : GameScreen("Skyparty Games") {
 			else -> button(g, x, cy, w, 14, "Join game", mx, my, color = GameColors.GREEN) { MinigameHub.setReady(lobby, true) }
 		}
 		return cy + 18
+	}
+
+	/** Splits [text] into lines of at most [w] pixels at word boundaries. */
+	private fun wrapLines(text: String, w: Int): List<String> {
+		val out = mutableListOf<String>()
+		var line = ""
+		for (word in text.split(' ')) {
+			val next = if (line.isEmpty()) word else "$line $word"
+			if (font.width(next) > w && line.isNotEmpty()) {
+				out += line
+				line = word
+			} else line = next
+		}
+		if (line.isNotEmpty()) out += line
+		return out
 	}
 
 	/** Word-wraps [text] into [w] pixels; returns the y below the last line. */
