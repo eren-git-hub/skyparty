@@ -119,14 +119,27 @@ export async function verifyLogin(env: Env, req: Request, key: string, body: any
 		encodeURIComponent(username) +
 		"&serverId=" +
 		encodeURIComponent(serverId);
-	let res: Response;
-	try {
-		res = await fetch(url, { headers: { "User-Agent": "skyparty-api" } });
-	} catch {
-		return { ok: false, status: 502, code: "mojang_unreachable" };
+	// Mojang sometimes rate-limits (429) or hiccups (5xx), and Workers share outgoing IPs: retry twice.
+	let res: Response | null = null;
+	for (let attempt = 0; attempt < 3; attempt++) {
+		if (attempt > 0) await new Promise((r) => setTimeout(r, 400 * attempt));
+		try {
+			res = await fetch(url, { headers: { "User-Agent": "skyparty-api", Accept: "application/json" } });
+		} catch (e) {
+			console.log("hasJoined unreachable", String(e));
+			res = null;
+			continue;
+		}
+		if (res.status !== 429 && res.status < 500) break;
+		console.log("hasJoined retry", attempt, res.status);
 	}
+	if (!res) return { ok: false, status: 502, code: "mojang_unreachable" };
 	if (res.status === 204) return { ok: false, status: 401, code: "not_joined" };
-	if (!res.ok) return { ok: false, status: 502, code: "mojang_error" };
+	if (!res.ok) {
+		const text = (await res.text().catch(() => "")).slice(0, 200);
+		console.log("hasJoined failed", res.status, text);
+		return { ok: false, status: 502, code: "mojang_" + res.status };
+	}
 	const profile: any = await res.json().catch(() => null);
 	const uuid = normUuid(profile?.id);
 	if (!uuid || !isMcName(profile?.name)) return { ok: false, status: 502, code: "mojang_bad_response" };

@@ -193,7 +193,9 @@ class HubScreen : GameScreen("Skyparty Games") {
 		}
 
 		val status = dev.skyparty.module.impl.client.OnlineModule.status()
-		g.text(font, font.plainSubstrByWidth(status, iw), ix, y + h - 12, Theme.TEXT, false)
+		// Status can be a long error: wrap it upwards from the bottom (max 3 lines).
+		val statusLines = wrapLines(status, iw).take(3)
+		for ((i, line) in statusLines.withIndex()) g.text(font, line, ix, y + h - 12 - (statusLines.size - 1 - i) * 10, Theme.TEXT, false)
 	}
 
 	private fun drawLobby(

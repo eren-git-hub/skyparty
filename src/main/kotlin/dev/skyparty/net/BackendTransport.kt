@@ -253,7 +253,8 @@ object BackendTransport : Net.Transport {
 			"not_joined" -> "Mojang did not confirm the login (restart the game if your session expired)"
 			"rate_limited" -> "Rate limited, retrying later"
 			"not_configured" -> "Backend has no SESSION_SECRET set"
-			else -> "Backend error ${e.status} (${e.code})"
+			"mojang_unreachable" -> "Server could not reach Mojang to check your login"
+			else -> if (e.code.startsWith("mojang")) "Mojang refused the login check (${e.code.removePrefix("mojang_")})" else "Backend error ${e.status} (${e.code})"
 		}
 		is com.mojang.authlib.exceptions.AuthenticationException -> "Mojang login failed: ${e.message ?: e.javaClass.simpleName}"
 		is java.net.ConnectException, is java.net.http.HttpConnectTimeoutException -> "Backend unreachable"
