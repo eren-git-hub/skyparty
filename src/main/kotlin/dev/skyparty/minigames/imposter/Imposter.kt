@@ -42,6 +42,7 @@ object Imposter : Minigame {
 	override val minPlayers = 1
 	override val maxPlayers = 8
 	override val realtime = false
+	override val length = dev.skyparty.minigames.GameLength.MEDIUM
 
 	const val HINT_ROUNDS = 2
 	const val TURN_MS = 30_000L
@@ -100,8 +101,10 @@ object Imposter : Minigame {
 	override fun open(room: Net.Room?) = MinigameHub.openScreen(ImposterScreen(LobbyRoom.of(room, id)))
 }
 
-class ImposterScreen(val room: LobbyRoom) : GameScreen("Imposter") {
+class ImposterScreen(val room: LobbyRoom) : GameScreen("Imposter", room) {
 	enum class Phase { WAITING, HINTS, VOTE, GUESS, OVER }
+
+	override fun inProgress() = phase != Phase.OVER
 
 	private var phase = Phase.WAITING
 	private var phaseStart = 0L
@@ -121,17 +124,18 @@ class ImposterScreen(val room: LobbyRoom) : GameScreen("Imposter") {
 	private var botActAt = 0L
 	private var rewarded = false
 	private val botVoteAt = HashMap<UUID, Long>()
+	private val hintRounds = Imposter.HINT_ROUNDS
 
 	init {
 		room.onMessage = ::onMessage
 		if (room.isHost) requestStart()
 	}
 
-	private fun now() = System.currentTimeMillis()
+	private fun now() = room.now()
 	private val me get() = Net.selfId
 	private val isImposter get() = imposter == me
 	private val current get() = order.getOrNull(turn % order.size.coerceAtLeast(1))
-	private val turnsTotal get() = order.size * Imposter.HINT_ROUNDS
+	private val turnsTotal get() = order.size * hintRounds
 
 	// ------------------------------------------------------------------ protocol
 
@@ -296,15 +300,15 @@ class ImposterScreen(val room: LobbyRoom) : GameScreen("Imposter") {
 
 	// ------------------------------------------------------------------ input
 
-	override fun keyPressed(event: KeyEvent): Boolean {
+	override fun onKey(event: KeyEvent): Boolean {
 		if (typing()) when (event.key()) {
 			GLFW.GLFW_KEY_BACKSPACE -> { input = input.dropLast(1); return true }
 			GLFW.GLFW_KEY_ENTER, GLFW.GLFW_KEY_KP_ENTER -> { if (phase == Phase.GUESS) submitGuess() else sendHint(); return true }
 		}
-		return super.keyPressed(event)
+		return super.onKey(event)
 	}
 
-	override fun charTyped(event: CharacterEvent): Boolean {
+	override fun onChar(event: CharacterEvent): Boolean {
 		if (!typing() || !event.isAllowedChatCharacter()) return false
 		if (input.length < 24) input += event.codepointAsString()
 		return true
@@ -385,8 +389,8 @@ class ImposterScreen(val room: LobbyRoom) : GameScreen("Imposter") {
 				timer(g, cx, y, 1f - t.toFloat() / Imposter.TURN_MS)
 				if (current == me) {
 					inputBox(g, cx, y + 8, "Your hint (one word)…", mouseX, mouseY, "Send") { sendHint() }
-					centered(g, "§7Round $round/${Imposter.HINT_ROUNDS} · your turn!", cx, y + 30, Theme.TEXT)
-				} else centered(g, "§7Round $round/${Imposter.HINT_ROUNDS} · §f${names[current] ?: "?"}§7 is giving a hint", cx, y + 12, Theme.TEXT)
+					centered(g, "§7Round $round/${hintRounds} · your turn!", cx, y + 30, Theme.TEXT)
+				} else centered(g, "§7Round $round/${hintRounds} · §f${names[current] ?: "?"}§7 is giving a hint", cx, y + 12, Theme.TEXT)
 			}
 			Phase.VOTE -> {
 				timer(g, cx, y, 1f - t.toFloat() / Imposter.VOTE_MS)
@@ -421,7 +425,7 @@ class ImposterScreen(val room: LobbyRoom) : GameScreen("Imposter") {
 				if (room.solo) start(Random.nextLong()) else requestStart()
 			}
 		} else centered(g, "§7Waiting for the host…", cx, y + 38, Theme.TEXT)
-		button(g, cx + 8, y + 34, 92, 16, "Leave", mx, my, color = GameColors.RED) { onClose() }
+		button(g, cx + 8, y + 34, 92, 16, "Leave", mx, my, color = GameColors.RED) { room.quit(); onClose() }
 	}
 
 	private fun timer(g: GuiGraphicsExtractor, cx: Int, y: Int, frac: Float) {

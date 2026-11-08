@@ -356,7 +356,7 @@ class RemindersScreen : GameScreen("Reminders") {
 		alertPrice = ""
 	}
 
-	override fun keyPressed(event: KeyEvent): Boolean {
+	override fun onKey(event: KeyEvent): Boolean {
 		when (event.key()) {
 			GLFW.GLFW_KEY_BACKSPACE -> {
 				when (focus) { 0 -> text = text.dropLast(1); 1 -> time = time.dropLast(1); 2 -> alertItem = alertItem.dropLast(1); else -> alertPrice = alertPrice.dropLast(1) }
@@ -365,10 +365,10 @@ class RemindersScreen : GameScreen("Reminders") {
 			GLFW.GLFW_KEY_TAB -> { focus = (focus + 1) % 4; return true }
 			GLFW.GLFW_KEY_ENTER, GLFW.GLFW_KEY_KP_ENTER -> { if (focus >= 2) submitAlert() else submit(); return true }
 		}
-		return super.keyPressed(event)
+		return super.onKey(event)
 	}
 
-	override fun charTyped(event: CharacterEvent): Boolean {
+	override fun onChar(event: CharacterEvent): Boolean {
 		if (!event.isAllowedChatCharacter()) return false
 		val s = event.codepointAsString()
 		when (focus) {

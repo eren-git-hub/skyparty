@@ -9,6 +9,8 @@ object Features {
 	val inits: List<() -> Unit> = listOf(
 		{ dev.skyparty.party.PartyTracker.init() },
 		{ dev.skyparty.wheel.WheelSession.init() },
+		{ dev.skyparty.party.PartyChat.init() },
+		{ dev.skyparty.cosmetics.CosmeticOwners.init() },
 		// Parkour registers first so it is at the top of the games list.
 		{ dev.skyparty.minigames.parkour.ParkourGame.init() },
 		{ dev.skyparty.minigames.MinigameHub.init() },

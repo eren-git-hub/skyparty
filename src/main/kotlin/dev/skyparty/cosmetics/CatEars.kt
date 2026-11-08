@@ -20,15 +20,14 @@ import net.minecraft.world.level.LightLayer
 import kotlin.math.sin
 
 /**
- * Cosmetic: cat ears on the head and a swaying tail for the players in [OWNERS]. Client-side only
+ * Cosmetic: cat ears on the head and a swaying tail for the players listed in cosmetics.json (see [CosmeticOwners]). Client-side only
  * (just people with the mod see them), nothing is sent anywhere.
  *
  * Offsets are in model pixels (1/16 block), Y up, facing +Z. Every transform is applied on the PoseStack before a part
  * is submitted, so the shared parts never carry per-player state (submitted parts are drawn later).
  */
 object CatEars {
-	/** Classic catgirl look: black ears (pink inside) and a black tail. Names are lowercase. */
-	private val OWNERS = setOf("evocative", "mutsiri", "jijli", "mongers", "limnophobia")
+	// Classic catgirl look: black ears (pink inside) and a black tail.
 	private const val FUR = 0xFF1B1A1F.toInt()
 
 	/** Extra names for tests only (the dev account is "Player0"). */
@@ -39,7 +38,7 @@ object CatEars {
 	private const val INNER = 0xFFF2A7B5.toInt()
 	private const val TAIL_SEGMENTS = 4
 
-	fun hasCatEars(player: Player) = player.gameProfile.name.lowercase().let { it in OWNERS || it in testOwners }
+	fun hasCatEars(player: Player) = player.gameProfile.name.lowercase().let { CosmeticOwners.has(CosmeticOwners.CAT_EARS, it) || it in testOwners }
 
 	private class Parts(val ear: ModelPart, val earInner: ModelPart, val tail: ModelPart, val tailTip: ModelPart)
 

@@ -242,7 +242,7 @@ class NewsScreen : GameScreen("News") {
 			val hover = mouseY in y until y + h && hovered(8, ry, lw, rowH - 2, mouseX, mouseY)
 			g.fill(8, ry, 8 + lw, ry + rowH - 2, if (on) GameColors.CARD_HOVER else if (hover) 0xF0201A2C.toInt() else GameColors.CARD)
 			g.fill(8, ry, 10, ry + rowH - 2, it.kind.color)
-			g.text(font, font.plainSubstrByWidth(it.title, lw - 12), 14, ry + 3, Theme.TEXT, false)
+			g.text(font, fit(it.title, lw - 12), 14, ry + 3, Theme.TEXT, false)
 			val date = it.date?.format(DateTimeFormatter.ofPattern("MMM d, yyyy", java.util.Locale.ENGLISH)) ?: ""
 			g.text(font, "§8$date · ", 14, ry + 13, Theme.TEXT, false)
 			g.text(font, it.kind.label, 14 + font.width("§8$date · "), ry + 13, it.kind.color, false)

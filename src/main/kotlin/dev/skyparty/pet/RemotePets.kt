@@ -23,9 +23,9 @@ object RemotePets {
 	private val SERVER_LINE = Regex("\\d{2}/\\d{2}/\\d{2}\\s+([A-Za-z0-9]{2,12})")
 	private const val ANNOUNCE_DELAY_MS = 1_500L
 
-	class Info(val name: String, val body: Int, val accent: Int)
+	class Info(val name: String, val body: Int, val accent: Int, val species: PetSpecies = PetSpecies.DRAGON)
 	class Pet(val owner: UUID, var info: Info) {
-		val model = PetModels.create()
+		var model = PetModels.create(info.species)
 		val follower = PetFollower()
 		val body get() = info.body
 		val accent get() = info.accent
@@ -90,7 +90,7 @@ object RemotePets {
 	/** What we announce, or "hidden" when the pet is set to Only Me. */
 	private fun ownLook(): String =
 		if (CustomPets.visibility.value != "Everyone") "hidden"
-		else "${CustomPets.petName.value}|${CustomPets.bodyColor.value}|${CustomPets.accentColor.value}"
+		else "${CustomPets.petName.value}|${CustomPets.bodyColor.value}|${CustomPets.accentColor.value}|${CustomPets.species.value}"
 
 	private fun announce(r: Net.Room, look: String) {
 		lastSent = look
@@ -102,6 +102,7 @@ object RemotePets {
 			addProperty("name", CustomPets.petName.value.take(16))
 			addProperty("body", CustomPets.bodyColor.value)
 			addProperty("accent", CustomPets.accentColor.value)
+			addProperty("species", PetSpecies.own.name.lowercase())
 		})
 	}
 
@@ -114,6 +115,7 @@ object RemotePets {
 					p["name"]?.asString?.take(16) ?: "",
 					p["body"].asInt or 0xFF000000.toInt(),
 					p["accent"].asInt or 0xFF000000.toInt(),
+					PetSpecies.entries.firstOrNull { it.name.equals(p["species"]?.asString, ignoreCase = true) } ?: PetSpecies.DRAGON,
 				)
 			}.onFailure { log.debug("Bad pet.info from {}", msg.fromName) }
 			"pet.hide" -> infos.remove(msg.from)
@@ -135,6 +137,7 @@ object RemotePets {
 			}
 			val pet = pets.getOrPut(uuid) { Pet(uuid, info) }
 			pet.info = info
+			if (pet.model.species != info.species) pet.model = PetModels.create(info.species)
 			pet.follower.tick(owner)
 		}
 	}

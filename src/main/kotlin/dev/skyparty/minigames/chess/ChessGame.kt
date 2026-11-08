@@ -19,6 +19,7 @@ object ChessGame : Minigame {
 	override val minPlayers = 1
 	override val maxPlayers = 2
 	override val realtime = false
+	override val length = dev.skyparty.minigames.GameLength.LONG
 
 	/** The running session (kept when the screen closes so online games survive). */
 	var session: ChessSession? = null

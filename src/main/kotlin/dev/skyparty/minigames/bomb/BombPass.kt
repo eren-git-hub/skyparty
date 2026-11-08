@@ -44,6 +44,7 @@ object BombPass : Minigame {
 	override val minPlayers = 1
 	override val maxPlayers = 8
 	override val realtime = true
+	override val length = dev.skyparty.minigames.GameLength.SHORT
 
 	const val FUSE_MIN = 7_000L
 	const val FUSE_EXTRA = 9_000L
@@ -54,8 +55,10 @@ object BombPass : Minigame {
 	override fun open(room: Net.Room?) = MinigameHub.openScreen(BombScreen(LobbyRoom.of(room, id)))
 }
 
-class BombScreen(val room: LobbyRoom) : GameScreen("Bomb Pass") {
+class BombScreen(val room: LobbyRoom) : GameScreen("Bomb Pass", room) {
 	enum class Phase { WAITING, INTRO, LIVE, BOOM, OVER }
+
+	override fun inProgress() = phase != Phase.OVER
 
 	sealed class Task {
 		class Keys(val keys: List<Int>, var done: Int = 0) : Task()
@@ -89,7 +92,7 @@ class BombScreen(val room: LobbyRoom) : GameScreen("Bomb Pass") {
 		if (room.isHost) requestStart()
 	}
 
-	private fun now() = System.currentTimeMillis()
+	private fun now() = room.now()
 
 	// ------------------------------------------------------------------ protocol
 
@@ -246,7 +249,7 @@ class BombScreen(val room: LobbyRoom) : GameScreen("Bomb Pass") {
 
 	private fun canAct() = phase == Phase.LIVE && holder == Net.selfId
 
-	override fun keyPressed(event: KeyEvent): Boolean {
+	override fun onKey(event: KeyEvent): Boolean {
 		val t = task
 		if (canAct() && t is Task.Keys) {
 			val dir = when (event.key()) {
@@ -265,7 +268,7 @@ class BombScreen(val room: LobbyRoom) : GameScreen("Bomb Pass") {
 				return true
 			}
 		}
-		return super.keyPressed(event)
+		return super.onKey(event)
 	}
 
 	// ------------------------------------------------------------------ loop
@@ -413,7 +416,7 @@ class BombScreen(val room: LobbyRoom) : GameScreen("Bomb Pass") {
 				if (room.solo) startMatch(Random.nextLong()) else requestStart()
 			}
 		} else centered(g, "§7Waiting for the host…", cx, cy + 19, Theme.TEXT)
-		button(g, cx + 8, cy + 14, 92, 18, "Leave", mx, my, color = GameColors.RED) { onClose() }
+		button(g, cx + 8, cy + 14, 92, 18, "Leave", mx, my, color = GameColors.RED) { room.quit(); onClose() }
 	}
 
 	private fun drawTask(g: GuiGraphicsExtractor, cx: Int, y: Int, mx: Int, my: Int) {

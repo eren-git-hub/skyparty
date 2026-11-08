@@ -40,6 +40,7 @@ object ParkourGame : Minigame {
 	override val minPlayers = 1
 	override val maxPlayers = 5
 	override val realtime = true
+	override val length = dev.skyparty.minigames.GameLength.MEDIUM
 
 	override fun open(room: Net.Room?) = MinigameHub.openScreen(ParkourScreen(LobbyRoom.of(room, id), null))
 
@@ -74,8 +75,10 @@ object ParkourGame : Minigame {
 	}
 }
 
-class ParkourScreen(val room: LobbyRoom, private val fixedSeed: Long?) : GameScreen("Parkour Race") {
+class ParkourScreen(val room: LobbyRoom, private val fixedSeed: Long?) : GameScreen("Parkour Race", room) {
 	enum class Phase { WAITING, COUNTDOWN, RUN, FINISHED }
+
+	override fun inProgress() = phase != Phase.FINISHED
 
 	private class Racer(var x: Float, var y: Float, var px: Float, var py: Float, var facing: Int, var anim: Int, var at: Long)
 	private class GhostFrame(val x: Int, val y: Int, val facing: Int)
@@ -130,7 +133,7 @@ class ParkourScreen(val room: LobbyRoom, private val fixedSeed: Long?) : GameScr
 				r.x = x; r.y = y
 				r.facing = p["f"]?.asInt ?: 1
 				r.anim = p["a"]?.asInt ?: 0
-				r.at = System.currentTimeMillis()
+				r.at = room.now()
 			}
 			"parkour.finish" -> finished.putIfAbsent(msg.from, p["steps"]?.asInt ?: Int.MAX_VALUE)
 		}
@@ -151,7 +154,7 @@ class ParkourScreen(val room: LobbyRoom, private val fixedSeed: Long?) : GameScr
 			Minecraft.getInstance().execute {
 				level = l
 				reset()
-				countdownUntil = System.currentTimeMillis() + 3000
+				countdownUntil = room.now() + 3000
 				phase = Phase.COUNTDOWN
 			}
 		}, "Skyparty-ParkourGen").apply { isDaemon = true }.start()
@@ -177,8 +180,8 @@ class ParkourScreen(val room: LobbyRoom, private val fixedSeed: Long?) : GameScr
 
 	private fun simulate() {
 		val l = level ?: return
-		val now = System.nanoTime()
-		if (phase == Phase.COUNTDOWN && System.currentTimeMillis() >= countdownUntil) {
+		val now = room.nanos()
+		if (phase == Phase.COUNTDOWN && room.now() >= countdownUntil) {
 			phase = Phase.RUN
 			lastStepNanos = now
 		}
@@ -239,7 +242,7 @@ class ParkourScreen(val room: LobbyRoom, private val fixedSeed: Long?) : GameScr
 		val areaH = height - top - 18
 		// Show ~10 tile rows so the pixel skins are big enough; the camera follows in both axes.
 		val scale = areaH / (10f * TILE)
-		val stepFrac = if (phase == Phase.RUN) ((System.nanoTime() - lastStepNanos).toFloat() * ParkourPhysics.STEPS_PER_SECOND / 1e9f).coerceIn(0f, 1f) else 1f
+		val stepFrac = if (phase == Phase.RUN) ((room.nanos() - lastStepNanos).toFloat() * ParkourPhysics.STEPS_PER_SECOND / 1e9f).coerceIn(0f, 1f) else 1f
 		val px = (prevX + (state.x - prevX) * stepFrac) / FP
 		val py = (prevY + (state.y - prevY) * stepFrac) / FP
 		val viewW = width / scale
@@ -264,8 +267,8 @@ class ParkourScreen(val room: LobbyRoom, private val fixedSeed: Long?) : GameScr
 			if (f != null && phase != Phase.WAITING) drawSkin(g, selfSkin(), f.x / FP.toFloat(), f.y / FP.toFloat(), f.facing, steps, 0x66FFFFFF, "§7PB ghost")
 		}
 		for ((id, r) in others) {
-			val t = ((System.currentTimeMillis() - r.at) / 250f).coerceIn(0f, 1f)
-			drawSkin(g, skinOf(id), r.px + (r.x - r.px) * t, r.py + (r.y - r.py) * t, r.facing, if (r.anim == 1) (System.currentTimeMillis() / 16).toInt() else 0,
+			val t = ((room.now() - r.at) / 250f).coerceIn(0f, 1f)
+			drawSkin(g, skinOf(id), r.px + (r.x - r.px) * t, r.py + (r.y - r.py) * t, r.facing, if (r.anim == 1) (room.now() / 16).toInt() else 0,
 				0xAAFFFFFF.toInt(), room.nameOf(id))
 		}
 		val moving = state.grounded && state.vx != 0
@@ -477,7 +480,7 @@ class ParkourScreen(val room: LobbyRoom, private val fixedSeed: Long?) : GameScr
 
 		when (phase) {
 			Phase.COUNTDOWN -> {
-				val left = ((countdownUntil - System.currentTimeMillis()) / 1000 + 1).coerceAtLeast(1)
+				val left = ((countdownUntil - room.now()) / 1000 + 1).coerceAtLeast(1)
 				bigText(g, "$left", cx, areaTop + areaH / 2 - 20, 4f, Theme.rainbow(left * 0.2f))
 				centered(g, "§7A/D or ←/→ to run · Space/W to jump", cx, areaTop + areaH / 2 + 22, Theme.TEXT)
 			}
@@ -510,12 +513,12 @@ class ParkourScreen(val room: LobbyRoom, private val fixedSeed: Long?) : GameScr
 		if (newBest) centered(g, "§e✦ New personal best! ✦", cx, ly + 2 + (rows.size + running.size) * 11, Theme.TEXT)
 		val by = y + h - 18
 		if (room.solo) {
-			button(g, cx - 84, by, 80, 14, "Retry", mx, my) { reset(); countdownUntil = System.currentTimeMillis() + 2000; phase = Phase.COUNTDOWN }
+			button(g, cx - 84, by, 80, 14, "Retry", mx, my) { reset(); countdownUntil = room.now() + 2000; phase = Phase.COUNTDOWN }
 			button(g, cx + 4, by, 80, 14, "New course", mx, my) { startSolo((1..1_000_000).random().toLong()) }
 		} else {
 			if (room.isHost) button(g, cx - 84, by, 80, 14, "Race again", mx, my) { room.send("parkour.start.rng", JsonObject()) }
 			else centered(g, "§7Waiting for the host…", cx - 44, by + 3, Theme.TEXT)
-			button(g, cx + 4, by, 80, 14, "Leave", mx, my, color = GameColors.RED) { onClose() }
+			button(g, cx + 4, by, 80, 14, "Leave", mx, my, color = GameColors.RED) { room.quit(); onClose() }
 		}
 	}
 

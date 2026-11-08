@@ -9,8 +9,10 @@ object CustomPets : Module(
 	description = "Your 3D pet that follows you around. Others with Skyparty see it too.",
 	category = Category.PETS,
 	defaultEnabled = true,
+	switchable = true,
 ) {
 	val petName = text("Pet Name", "Lusi", 16)
+	val species = selector("Species", "Dragon", dev.skyparty.pet.PetSpecies.labels)
 	val bodyColor = color("Body Color", 0xFF7FD3FF.toInt(), allowAlpha = false)
 	val accentColor = color("Accent Color", 0xFFFFB347.toInt(), allowAlpha = false)
 	val visibility = selector("Visibility", "Everyone", listOf("Everyone", "Only Me"))

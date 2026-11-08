@@ -299,18 +299,22 @@ object ScoreboardPetHud {
 
 	// ---------------------------------------------------------------- drawing
 
+	/** Tests: where the pet is relative to the sidebar box. */
+	fun debugState() = "box=$box x=$x height=$height mode=$mode sprite=${spriteW}x${spriteH} pixel=$pixel"
+
 	private fun topY(): Float {
 		val b = box ?: return 0f
 		return b.top - spriteH * pixel - height
 	}
 
 	fun render(g: GuiGraphicsExtractor, delta: DeltaTracker) {
-		val currentBox = SidebarBounds.consume()
+		// The box is in screen space; bring it into this element's space (in case the HUD itself is transformed).
+		val currentBox = SidebarBounds.consume()?.let { toLocal(g, it) }
 		box = currentBox
 		if (!ScoreboardPet.enabled || currentBox == null) return
 		if (x.isNaN()) return
 
-		val sprites = PetSprites.adult
+		val sprites = PetSprites.of(dev.skyparty.pet.PetSpecies.own)
 		val sprite = when {
 			mode == Mode.SLEEP -> sprites.sleep
 			mode == Mode.WALK || mode == Mode.CHASE -> sprites.walk[(age / 5) % sprites.walk.size]
@@ -357,6 +361,13 @@ object ScoreboardPetHud {
 				g.text(font, label, lx, (drawY - 10).toInt(), 0xFFFFFFFF.toInt(), true)
 			}
 		}
+	}
+
+	private fun toLocal(g: GuiGraphicsExtractor, b: SidebarBounds.Box): SidebarBounds.Box {
+		val inv = org.joml.Matrix3x2f(g.pose()).invert()
+		val a = inv.transformPosition(b.left.toFloat(), b.top.toFloat(), org.joml.Vector2f())
+		val c = inv.transformPosition(b.right.toFloat(), b.bottom.toFloat(), org.joml.Vector2f())
+		return SidebarBounds.Box(minOf(a.x, c.x).toInt(), minOf(a.y, c.y).toInt(), maxOf(a.x, c.x).toInt(), maxOf(a.y, c.y).toInt())
 	}
 
 	private fun drawSprite(g: GuiGraphicsExtractor, sprite: Sprite, x: Float, y: Float, scale: Float, right: Boolean) {

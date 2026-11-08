@@ -26,7 +26,7 @@ abstract class ModuleSettingsScreen(title: String) : GameScreen(title) {
 	private var maxScroll = 0
 	private var area = intArrayOf(0, 0, 0, 0)
 
-	private fun elementsOf(m: Module) = elements.getOrPut(m) { (m.settings + m.keybind).map { SettingElement.of(it) } }
+	private fun elementsOf(m: Module) = elements.getOrPut(m) { m.settings.map { SettingElement.of(it) } }
 
 	/** Draws [modules] as cards in a scrollable column at (x, y, w, h). */
 	protected fun drawModules(g: GuiGraphicsExtractor, modules: List<Module>, x: Int, y: Int, w: Int, h: Int, mx: Int, my: Int) {
@@ -35,20 +35,22 @@ abstract class ModuleSettingsScreen(title: String) : GameScreen(title) {
 		g.enableScissor(x, y, x + w, y + h)
 		var cy = y - scroll
 		for (m in modules) {
-			val els = elementsOf(m)
+			// Only settings that are shown; a feature with none (e.g. the connection) gets no card.
+			val els = elementsOf(m).filter { it.setting.visible() }
+			if (els.isEmpty()) continue
 			val cardH = 30 + els.sumOf { it.height + 1 } + 4
 			g.fill(x, cy, x + w, cy + cardH, GameColors.CARD)
 			g.fill(x, cy, x + 2, cy + cardH, m.category.color)
 			g.text(font, "§l" + m.name, x + 8, cy + 5, Theme.TEXT, true)
-			g.text(font, font.plainSubstrByWidth(m.description, w - 70), x + 8, cy + 17, Theme.TEXT_DIM, false)
-			if (m.toggleable) {
+			g.text(font, fit(m.description, w - if (m.switchable) 46 else 16), x + 8, cy + 17, Theme.TEXT_DIM, false)
+			if (m.switchable) {
 				val tx = x + w - 34
 				val ty = cy + 6
 				val on = m.enabled
 				g.fill(tx, ty, tx + 26, ty + 12, if (on) GameColors.GREEN else 0xFF3A3A46.toInt())
 				val knob = if (on) tx + 15 else tx + 1
 				g.fill(knob, ty + 1, knob + 10, ty + 11, Theme.TEXT)
-				if (my in y until y + h) clickArea(tx, ty, 26, 12) { m.toggle(); ConfigManager.save() }
+				if (my in y until y + h) clickArea(tx, ty, 26, 12) { m.setEnabled(!m.enabled); ConfigManager.save() }
 			}
 			var ey = cy + 30
 			for (e in els) {
@@ -98,12 +100,12 @@ abstract class ModuleSettingsScreen(title: String) : GameScreen(title) {
 		return true
 	}
 
-	override fun keyPressed(event: KeyEvent): Boolean {
+	override fun onKey(event: KeyEvent): Boolean {
 		UiFocus.focused?.let { if (it.keyPressed(event.key())) return true }
-		return super.keyPressed(event)
+		return super.onKey(event)
 	}
 
-	override fun charTyped(event: CharacterEvent): Boolean {
+	override fun onChar(event: CharacterEvent): Boolean {
 		if (!event.isAllowedChatCharacter()) return false
 		UiFocus.focused?.let { return it.charTyped(event.codepointAsString()) }
 		return false
@@ -120,7 +122,8 @@ abstract class ModuleSettingsScreen(title: String) : GameScreen(title) {
 class SettingsScreen : ModuleSettingsScreen("Settings") {
 	override fun draw(g: GuiGraphicsExtractor, mouseX: Int, mouseY: Int, partialTick: Float) {
 		val top = header(g, "Settings", "features and interface")
-		val modules = ModuleManager.modules.filter { it.category != Category.PETS }
+		// Interface (colors) first, then the features.
+		val modules = ModuleManager.modules.filter { it.category != Category.PETS }.sortedBy { it.category != Category.CLIENT }
 		val w = minOf(320, width - 40)
 		drawModules(g, modules, width / 2 - w / 2, top + 8, w, height - top - 16, mouseX, mouseY)
 	}

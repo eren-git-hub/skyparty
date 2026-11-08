@@ -14,6 +14,11 @@ import net.minecraft.client.gui.GuiGraphicsExtractor
 /** "/sp games": list of registered minigames plus the room/lobby panel. */
 class HubScreen : GameScreen("Skyparty Games") {
 	override val backToHub = false
+
+	override fun init() {
+		super.init()
+		dev.skyparty.party.PartyTracker.autoCheck()
+	}
 	private var scroll = 0
 	private var maxScroll = 0
 	private var listBox = intArrayOf(0, 0, 0, 0)
@@ -83,7 +88,21 @@ class HubScreen : GameScreen("Skyparty Games") {
 		val btnW = 64
 		val textX = ix + 30
 		val textW = w - (textX - x) - btnW - 10
-		g.text(font, "§l" + font.plainSubstrByWidth(game.name, textW - 4), textX, y + 6, Theme.TEXT, true)
+		// Name, then how long a match takes (Short / Medium / Long) as a small colored tag.
+		val len = game.length
+		val tagW = font.width(len.label) + 6
+		// The tag sits after the name; if both do not fit, it moves to the bottom line so the name stays whole.
+		val nameW = boldWidth(game.name)
+		val tagOnTop = nameW + tagW + 7 <= textW
+		if (tagOnTop) g.text(font, bold(game.name), textX, y + 6, Theme.TEXT, true)
+		else g.text(font, bold(fitBold(game.name, textW)), textX, y + 6, Theme.TEXT, true)
+		val tagX = if (tagOnTop) textX + nameW + 6 else textX
+		val tagY = if (tagOnTop) y + 5 else y + 40
+		g.fill(tagX, tagY, tagX + tagW, tagY + 10, ColorUtil.withAlpha(len.color, 0x30))
+		g.outline(tagX, tagY, tagW, 10, ColorUtil.withAlpha(len.color, 0xA0))
+		g.text(font, len.label, tagX + 3, tagY + 1, len.color, false)
+		if (hover && hovered(tagX, tagY, tagW, 10, mx, my)) tooltip("${len.label} game: ${len.hint}")
+		val infoX = if (tagOnTop) textX else textX + tagW + 4
 		val players = if (game.minPlayers == game.maxPlayers) "${game.minPlayers} players" else "${game.minPlayers}–${game.maxPlayers} players"
 		val tags = players + if (game.realtime) " · real-time" else " · turn-based"
 		// Description wraps onto two lines; anything longer ends in "…" and shows in full on hover.
@@ -96,7 +115,7 @@ class HubScreen : GameScreen("Skyparty Games") {
 		if (lines.size > 2 && hover && mx < textX + textW) tooltip(game.description)
 		val best = MinigameStore.best(game.id)
 		val info = if (best != null) "§6Best: ${best.display}  §8$tags" else "§8$tags"
-		g.text(font, font.plainSubstrByWidth(info, textW), textX, y + 41, Theme.TEXT, false)
+		g.text(font, fit(info, textW - (infoX - textX)), infoX, y + 41, Theme.TEXT, false)
 
 		// Buttons only clickable when inside the visible list area.
 		val bx = x + w - btnW - 6
@@ -111,14 +130,32 @@ class HubScreen : GameScreen("Skyparty Games") {
 			}
 		}
 		if (partyY >= visibleTop && partyY + 14 <= visibleBottom) {
-			val label = if (lobby?.isCode == true) "Invite room" else "With party"
-			val hint = when {
-				lobby == null -> "Join a party or create a room code first"
-				lobby.isCode -> "Open a ${game.name} room that everyone in ${lobby.code} can join"
-				else -> "Open a ${game.name} room your party can join (other games can run at the same time)"
-			}
-			button(g, bx, partyY, btnW, 14, label, mx, my, enabled = lobby != null && !blocked, hint = hint) {
-				MinigameHub.hostGame(game)
+			val mine = lobby?.mine
+			if (mine != null) {
+				// In a room: the host switches its game here, everyone else waits for the host.
+				val selected = mine.gameId == game.id
+				val tooMany = mine.joined.size > game.maxPlayers
+				val ok = mine.isHost && !mine.inGame && !selected && !tooMany && !blocked
+				val hint = when {
+					selected -> "Your room plays this"
+					!mine.isHost -> "${mine.hostName} picks the game. Leave your room to open your own."
+					mine.inGame -> "Wait until the game is over"
+					tooMany -> "For at most ${game.maxPlayers} players – your room has ${mine.joined.size}"
+					else -> "Switch your room to ${game.name} (everyone stays)"
+				}
+				button(g, bx, partyY, btnW, 14, if (selected) "✔ Picked" else "Pick", mx, my, enabled = ok,
+					color = if (selected) GameColors.GREEN else Theme.accent, hint = hint) { MinigameHub.changeGame(lobby, mine, game) }
+				if (selected) g.outline(x, y, w, h, Theme.accent(0xC0))
+			} else {
+				val label = if (lobby?.isCode == true) "Invite room" else "With party"
+				val hint = when {
+					lobby == null -> "Join a party or create a room code first"
+					lobby.isCode -> "Open a ${game.name} room that everyone in ${lobby.code} can join"
+					else -> "Open a ${game.name} room your party can join (other games can run at the same time)"
+				}
+				button(g, bx, partyY, btnW, 14, label, mx, my, enabled = lobby != null && !blocked, hint = hint) {
+					MinigameHub.hostGame(game)
+				}
 			}
 		}
 	}
@@ -152,6 +189,11 @@ class HubScreen : GameScreen("Skyparty Games") {
 		}
 
 		val lobby = MinigameHub.lobby
+		// A paused solo game: the way back in.
+		MinigameHub.activeGame?.takeIf { it.session == null && it.paused }?.let {
+			button(g, ix, cy, iw, 14, "▶ Back to your paused game", mx, my, color = GameColors.GOLD) { MinigameHub.backToGame() }
+			cy += 18
+		}
 		if (lobby == null) {
 			cy = wrap(g, "Not in a party. Create a room code and share it so friends can join:", ix, cy, iw, Theme.TEXT_DIM)
 			cy += 3
@@ -213,6 +255,17 @@ class HubScreen : GameScreen("Skyparty Games") {
 	): Int {
 		var cy = y
 		val sessions = lobby.sessions.values.toList()
+		// The party's / code room's wheel is listed like a game room (but is not one of the games).
+		val wheel = dev.skyparty.wheel.WheelSession
+		if (wheel.mode != dev.skyparty.wheel.WheelSession.Mode.LOCAL) {
+			g.fill(x, cy, x + w, cy + 15, GameColors.CARD)
+			g.fill(x, cy, x + 2, cy + 15, Theme.accent(0xFF))
+			g.text(font, font.plainSubstrByWidth("§f◎ Decision Wheel", w - 76), x + 5, cy + 4, Theme.TEXT, false)
+			val st = "§7${wheel.players.size}"
+			g.text(font, st, x + w - 40 - font.width(st), cy + 4, Theme.TEXT, false)
+			button(g, x + w - 36, cy + 1, 34, 13, "Open", mx, my, hint = "Host: ${wheel.host ?: "-"}") { minecraft.gui.setScreen(dev.skyparty.wheel.WheelScreen()) }
+			cy += 18
+		}
 		if (sessions.isEmpty()) {
 			return wrap(g, "No games open. Press \"${if (lobby.isCode) "Invite room" else "With party"}\" on a game to open one – several can run at once.", x, cy, w, Theme.TEXT_DIM)
 		}
@@ -221,11 +274,17 @@ class HubScreen : GameScreen("Skyparty Games") {
 		if (mine != null) {
 			val game = mine.game
 			g.fill(x - 2, cy - 2, x + w + 2, cy, Theme.accent(0xC0))
-			g.text(font, font.plainSubstrByWidth("§l${game?.name ?: mine.gameId}", w - 30), x, cy + 2, Theme.accent, true)
-			if (mine.inGame) g.text(font, "§ein game", x + w - font.width("in game"), cy + 2, Theme.TEXT, false)
+			g.text(font, bold(fitBold(game?.name ?: mine.gameId, w - 46)), x, cy + 2, Theme.accent, true)
+			if (mine.inGame) {
+				val st = if (mine.paused) "§6❚❚ paused" else "§ein game"
+				g.text(font, st, x + w - font.width(st), cy + 2, Theme.TEXT, false)
+			} else {
+				button(g, x + w - 40, cy, 40, 12, "Leave", mx, my, color = GameColors.RED,
+					hint = if (mine.isHost) "Closes this room for everyone" else "Leave this room") { MinigameHub.leave(lobby, mine) }
+			}
 			cy += 13
 			// Space for the buttons below (Ready/Leave + Start) and at least one other room.
-			val rows = ((bottom - 56 - cy) / 10).coerceIn(minOf(mine.joined.size, 3), 8)
+			val rows = ((bottom - 40 - cy) / 10).coerceIn(minOf(mine.joined.size, 3), 8)
 			for ((i, entry) in mine.joined.entries.withIndex()) {
 				if (i >= rows) { g.text(font, "§8+${mine.joined.size - rows} more", x + 4, cy, Theme.TEXT, false); cy += 10; break }
 				val (id, name) = entry
@@ -240,8 +299,6 @@ class HubScreen : GameScreen("Skyparty Games") {
 				val bw = (w - 4) / 2
 				button(g, x, cy, bw, 14, if (mine.selfReady) "✔ Ready" else "Ready", mx, my, color = if (mine.selfReady) GameColors.GREEN else 0xFF3A3050.toInt(),
 					hint = if (mine.selfReady) "Click to be not ready" else "Mark yourself ready") { MinigameHub.setReady(lobby, mine, !mine.selfReady) }
-				button(g, x + bw + 4, cy, bw, 14, "Leave", mx, my, color = GameColors.RED, hint = if (mine.isHost) "Closes this room for everyone" else "Leave this room") { MinigameHub.leave(lobby, mine) }
-				cy += 17
 				if (mine.isHost && game != null) {
 					val ok = mine.selfReady && readyCount >= game.minPlayers && !CombatGuard.blocked
 					val hint = when {
@@ -249,14 +306,25 @@ class HubScreen : GameScreen("Skyparty Games") {
 						readyCount < game.minPlayers -> "Needs ${game.minPlayers} ready players"
 						else -> "Start with the ${readyCount} ready players"
 					}
-					button(g, x, cy, w, 14, "Start ($readyCount ready)", mx, my, enabled = ok, color = GameColors.GREEN, hint = hint) { MinigameHub.start(lobby, mine) }
-					cy += 17
-				} else if (!mine.isHost) {
-					g.text(font, "§7Waiting for ${font.plainSubstrByWidth(mine.hostName, w - 70)} to start…", x, cy + 1, Theme.TEXT, false)
-					cy += 12
+					button(g, x + bw + 4, cy, bw, 14, "Start ($readyCount)", mx, my, enabled = ok, color = GameColors.GREEN, hint = hint) { MinigameHub.start(lobby, mine) }
+				} else {
+					g.text(font, font.plainSubstrByWidth("§7Waiting for ${mine.hostName}…", bw), x + bw + 6, cy + 3, Theme.TEXT, false)
 				}
+				cy += 17
 			} else {
-				button(g, x, cy, w, 14, "Leave", mx, my, color = GameColors.RED) { MinigameHub.leave(lobby, mine) }
+				val mineActive = lobby.active?.session == mine.id
+				if (mine.paused) {
+					g.text(font, font.plainSubstrByWidth("§7Paused by §f${mine.pausedBy ?: "someone"}", w), x, cy + 1, Theme.TEXT, false)
+					cy += 11
+				}
+				val bw = (w - 4) / 2
+				if (mineActive) {
+					button(g, x, cy, bw, 14, "▶ Open game", mx, my, color = GameColors.GREEN, hint = "Reopen your game") { MinigameHub.backToGame() }
+				} else {
+					g.text(font, "§7Others playing…", x, cy + 3, Theme.TEXT, false)
+				}
+				button(g, x + bw + 4, cy, bw, 14, "Leave", mx, my, color = GameColors.RED,
+					hint = if (mineActive) "Quit the game and leave the room" else "Leave this room") { MinigameHub.leave(lobby, mine) }
 				cy += 17
 			}
 			cy += 3
@@ -278,7 +346,8 @@ class HubScreen : GameScreen("Skyparty Games") {
 			val state = if (s.inGame) "§e▶ ${s.playing.size}" else "§7${s.joined.size}§8/${s.game?.maxPlayers ?: "?"}"
 			g.text(font, font.plainSubstrByWidth("§f$name", w - 70), x + 3, cy + 4, Theme.TEXT, false)
 			g.text(font, state, x + w - 40 - font.width(state), cy + 4, Theme.TEXT, false)
-			button(g, x + w - 36, cy + 1, 34, 13, "Join", mx, my, color = GameColors.GREEN,
+			val full = s.joined.size >= (s.game?.maxPlayers ?: 8)
+			button(g, x + w - 36, cy + 1, 34, 13, if (full) "Full" else "Join", mx, my, enabled = !full, color = GameColors.GREEN,
 				hint = "${s.hostName}'s room" + if (s.inGame) " (playing – you join the next round)" else "") { MinigameHub.join(lobby, s) }
 			cy += 17
 		}

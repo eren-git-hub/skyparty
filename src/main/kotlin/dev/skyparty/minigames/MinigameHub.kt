@@ -37,7 +37,9 @@ import kotlin.random.Random
  *
  * Lobby protocol (all messages echo to the sender, every client applies them in the same order):
  *  - "lobby.open"  {sid, game}            sender opened a game room (and is in it, not ready)
- *  - "lobby.join"  {sid}                  sender joined that room (leaving any other)
+ *  - "lobby.game"  {sid, game}            host switched the room to another game (everyone stays, not ready)
+ *  - "lobby.pause" {sid, on}              a player paused / resumed the running game
+ *  - "lobby.join"  {sid}                  sender joined that room (leaving any other; ignored when full)
  *  - "lobby.ready" {sid, on}              sender is (not) ready
  *  - "lobby.leave" {sid}                  sender left the room; the host leaving closes it
  *  - "lobby.start" {sid, players:[…]}     host started; listed players open the game
@@ -49,7 +51,10 @@ object MinigameHub {
 	private val mc get() = Minecraft.getInstance()
 
 	/** One game room inside a lobby. */
-	class Session(val id: String, val gameId: String, val host: UUID, val hostName: String) {
+	class Session(val id: String, var gameId: String, val host: UUID, val hostName: String) {
+		/** The running game is paused (someone went to do a dungeon etc.). */
+		var paused = false
+		var pausedBy: String? = null
 		/** Everyone in this room (join order, host first). */
 		val joined = linkedMapOf<UUID, String>()
 		val ready = linkedSetOf<UUID>()
@@ -182,6 +187,7 @@ object MinigameHub {
 	}
 
 	private fun leaveLobby(lobby: Lobby) {
+		lobby.active?.quit()
 		lobby.mine?.let { lobby.room.send("lobby.leave", sid(it.id)) }
 		lobby.room.leave()
 		if (invite?.lobby === lobby) invite = null
@@ -238,21 +244,64 @@ object MinigameHub {
 			Chat.info("§cJoin a party or create a room code first.")
 			return
 		}
-		lobby.mine?.let { lobby.room.send("lobby.leave", sid(it.id)) }
+		val mine = lobby.mine
+		if (mine != null) {
+			// You stay in your room until you press Leave: the host just switches its game.
+			if (mine.isHost) changeGame(lobby, mine, game)
+			else Chat.info("§7${mine.hostName} picks the game in your room. Press §fLeave §7first to open your own.")
+			return
+		}
 		lobby.room.send("lobby.open", sid(UUID.randomUUID().toString().take(8)).apply { addProperty("game", game.id) })
+	}
+
+	/** Host: switch your room to [game]; everyone stays in the room (not ready). */
+	fun changeGame(lobby: Lobby, session: Session, game: Minigame) {
+		if (!session.isHost || session.inGame || session.gameId == game.id) return
+		if (session.joined.size > game.maxPlayers) {
+			Chat.info("§c${game.name} is for at most ${game.maxPlayers} players – your room has ${session.joined.size}.")
+			return
+		}
+		lobby.room.send("lobby.game", sid(session.id).apply { addProperty("game", game.id) })
 	}
 
 	fun join(lobby: Lobby, session: Session) {
 		if (session.selfIn) return
-		lobby.mine?.let { lobby.room.send("lobby.leave", sid(it.id)) }
+		val game = session.game ?: return
+		if (session.joined.size >= game.maxPlayers) {
+			Chat.info("§c${session.hostName}'s ${game.name} room is full (${game.maxPlayers} players).")
+			return
+		}
+		lobby.mine?.let { leave(lobby, it) }
 		lobby.room.send("lobby.join", sid(session.id))
 		if (invite?.sessionId == session.id) invite = null
 	}
 
-	fun leave(lobby: Lobby, session: Session) = lobby.room.send("lobby.leave", sid(session.id))
+	fun leave(lobby: Lobby, session: Session) {
+		if (lobby.active?.session == session.id) lobby.active?.quit()
+		lobby.room.send("lobby.leave", sid(session.id))
+	}
 
 	fun setReady(lobby: Lobby, session: Session, ready: Boolean) =
 		lobby.room.send("lobby.ready", sid(session.id).apply { addProperty("on", ready) })
+
+	/** Your running game in the shown lobby (also while it is paused and its screen is closed). */
+	val activeGame: LobbyRoom? get() = lobby?.active ?: soloActive?.takeIf { !it.left }
+	private var soloActive: LobbyRoom? = null
+
+	/** Every solo room registers here, so a paused solo game can be reopened with "/sp". */
+	internal fun soloStarted(room: LobbyRoom) {
+		soloActive = room
+	}
+
+	/** What "/sp" opens: your running (paused) game if there is one, otherwise the games menu. */
+	fun mainScreen(): Screen = activeGame?.screen ?: HubScreen()
+
+	/** Reopens the screen of your running (paused) game. */
+	fun backToGame(): Boolean {
+		val screen = activeGame?.screen ?: return false
+		mc.gui.setScreen(screen)
+		return true
+	}
 
 	fun accept() {
 		val inv = invite ?: run {
@@ -287,7 +336,9 @@ object MinigameHub {
 			Chat.info("§c${game.name} needs at least ${game.minPlayers} ready players.")
 			return
 		}
-		lobby.room.send("lobby.start", sid(session.id).apply { add("players", playersJson(ready.entries.take(game.maxPlayers).associate { it.key to it.value })) })
+		lobby.room.send("lobby.start", sid(session.id).apply {
+			add("players", playersJson(ready.entries.take(game.maxPlayers).associate { it.key to it.value }))
+		})
 	}
 
 	// ------------------------------------------------------------------ messages
@@ -306,7 +357,23 @@ object MinigameHub {
 				lobby.sessions[id] = session
 				if (from != Net.selfId && lobby.mine == null) offerInvite(lobby, session, game)
 			}
-			"lobby.join" -> if (s != null) {
+			"lobby.game" -> if (s != null && from == s.host && !s.inGame) {
+				val game = MinigameRegistry.byId(p["game"]?.asString ?: return) ?: return
+				s.gameId = game.id
+				s.ready.clear()
+				if (from != Net.selfId && s.selfIn) Chat.info("§f${s.hostName} §7switched your room to §b${game.name}§7.")
+			}
+			"lobby.pause" -> if (s != null && from in s.playing) {
+				val on = p["on"]?.asBoolean == true
+				s.paused = on
+				s.pausedBy = if (on) msg.fromName else null
+				val active = lobby.active
+				if (active != null && active.session == s.id) {
+					active.applyPause(on, msg.fromName)
+					if (!on && mc.gui.screen() !== active.screen) offerResume(active, msg.fromName)
+				}
+			}
+			"lobby.join" -> if (s != null && (from in s.joined || s.joined.size < (s.game?.maxPlayers ?: 8))) {
 				leaveAll(lobby, from, except = s.id)
 				s.joined[from] = msg.fromName
 			}
@@ -319,10 +386,12 @@ object MinigameHub {
 				val players = readPlayers(p["players"]?.asJsonArray)
 				s.playing.clear(); s.playing += players.keys
 				s.ready.clear()
+				s.paused = false; s.pausedBy = null
 				if (Net.selfId in players) startGame(lobby, s, game, players)
 			}
 			"lobby.quit" -> if (s != null) {
 				s.playing -= from
+				if (s.playing.isEmpty()) { s.paused = false; s.pausedBy = null }
 				if (lobby.active?.session == s.id) lobby.active?.removePlayer(from)
 			}
 			"lobby.hello" -> if (from != Net.selfId) {
@@ -337,6 +406,7 @@ object MinigameHub {
 				session.joined.putIfAbsent(from, msg.fromName)
 				p["ready"]?.asJsonArray?.forEach { runCatching { session.ready += UUID.fromString(it.asString) } }
 				p["playing"]?.asJsonArray?.forEach { runCatching { session.playing += UUID.fromString(it.asString) } }
+				session.paused = p["paused"]?.asBoolean == true
 				lobby.sessions[id] = session
 			}
 			else -> lobby.active?.let { active ->
@@ -364,6 +434,7 @@ object MinigameHub {
 		add("joined", playersJson(s.joined))
 		add("ready", JsonArray().apply { s.ready.forEach { add(it.toString()) } })
 		add("playing", JsonArray().apply { s.playing.forEach { add(it.toString()) } })
+		addProperty("paused", s.paused)
 	}
 
 	private fun startGame(lobby: Lobby, session: Session, game: Minigame, players: Map<UUID, String>) {
@@ -372,16 +443,31 @@ object MinigameHub {
 			lobby.room.send("lobby.quit", sid(session.id))
 			return
 		}
-		lobby.active?.leave()
+		lobby.active?.quit()
 		val room = LobbyRoom(lobby.room, session.host, players, session.id) { r ->
 			if (lobby.active === r) {
 				lobby.active = null
 				lobby.room.send("lobby.quit", sid(session.id))
 			}
 		}
+		room.pauseSender = { on -> lobby.room.send("lobby.pause", sid(session.id).apply { addProperty("on", on) }) }
 		lobby.active = room
 		mc.gui.setScreen(null)
 		game.open(room)
+	}
+
+	/** Someone resumed your paused game: bring its screen back (or post a link if you are busy). */
+	private fun offerResume(room: LobbyRoom, by: String) {
+		val current = mc.gui.screen()
+		if ((current == null || current is HubScreen) && !CombatGuard.blocked && room.screen != null) {
+			mc.gui.setScreen(room.screen)
+			return
+		}
+		val link = Component.literal("§a§l[Back to game]").withStyle { st ->
+			st.withClickEvent(ClickEvent.RunCommand("/sp games resume"))
+				.withHoverEvent(HoverEvent.ShowText(Component.literal("Reopen your game")))
+		}
+		mc.player?.sendSystemMessage(Component.literal("${Chat.PREFIX}§f$by §7resumed your game. ").append(link))
 	}
 
 	private fun offerInvite(lobby: Lobby, session: Session, game: Minigame) {
@@ -427,6 +513,10 @@ object MinigameHub {
 			))
 			root.then(ClientCommands.literal("accept").executes { accept(); 1 })
 			root.then(ClientCommands.literal("deny").executes { deny(); 1 })
+			root.then(ClientCommands.literal("resume").executes {
+				later { if (!backToGame()) Chat.info("§7No paused game.") }
+				1
+			})
 			root.then(ClientCommands.literal("code").executes { createCode(); openHub(); 1 })
 			root.then(ClientCommands.literal("leave").executes {
 				leaveCode()

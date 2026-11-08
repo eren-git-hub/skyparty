@@ -17,16 +17,20 @@ object ConfigManager {
 	private val gson = GsonBuilder().setPrettyPrinting().create()
 	private val dir = FabricLoader.getInstance().configDir.resolve("skyparty")
 	private val file = dir.resolve("config.json")
+	private const val VERSION = 2
 
 	fun load() {
 		if (!Files.exists(file)) return
 		try {
 			val root = JsonParser.parseString(Files.readString(file)).asJsonObject
+			val version = root["version"]?.asInt ?: 1
 			root.getAsJsonObject("modules")?.let { modules ->
 				for ((id, element) in modules.entrySet()) {
 					val module = ModuleManager.byId(id) ?: continue
 					val obj = element.asJsonObject
-					obj["keybind"]?.let { runCatching { module.keybind.fromJson(it) } }
+					// Configs before version 2 saved the scoreboard pet as off by default (friends never saw it): ignore that.
+					val staleOff = version < 2 && module === dev.skyparty.module.impl.pets.ScoreboardPet
+					if (module.switchable && !staleOff) obj["enabled"]?.let { module.setEnabled(it.asBoolean) }
 					obj.getAsJsonObject("settings")?.let { settings ->
 						for (setting in module.settings) {
 							settings[setting.name]?.let { value ->
@@ -35,7 +39,6 @@ object ConfigManager {
 							}
 						}
 					}
-					obj["enabled"]?.let { module.setEnabled(it.asBoolean, notify = false) }
 				}
 			}
 		} catch (e: Exception) {
@@ -48,15 +51,14 @@ object ConfigManager {
 			val modules = JsonObject()
 			for (module in ModuleManager.modules) {
 				modules.add(module.id, JsonObject().apply {
-					addProperty("enabled", module.enabled)
-					add("keybind", module.keybind.toJson())
+					if (module.switchable) addProperty("enabled", module.enabled)
 					add("settings", JsonObject().apply {
 						for (setting in module.settings) add(setting.name, setting.toJson())
 					})
 				})
 			}
 			val root = JsonObject().apply {
-				addProperty("version", 1)
+				addProperty("version", VERSION)
 				add("modules", modules)
 			}
 			Files.createDirectories(dir)

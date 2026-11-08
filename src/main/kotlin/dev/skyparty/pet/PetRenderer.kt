@@ -20,7 +20,14 @@ object PetRenderer {
 	private val TEXTURE = Identifier.fromNamespaceAndPath(Skyparty.MOD_ID, "textures/entity/pet_white.png")
 	private val renderType by lazy { RenderTypes.entityTranslucent(TEXTURE) }
 
-	private val ownModel by lazy { PetModels.create() }
+	private var ownModelCache: PetModel? = null
+
+	/** Your pet's model, rebuilt when you pick another species. */
+	private val ownModel: PetModel
+		get() = ownModelCache?.takeIf { it.species == PetSpecies.own } ?: PetModels.create(PetSpecies.own).also { ownModelCache = it }
+
+	/** Ghosts are a little see-through. */
+	private fun opacityFor(species: PetSpecies) = CustomPets.opacity.value / 100.0 * if (species == PetSpecies.GHOST) 0.75 else 1.0
 
 	/** Tests only: hide your own pet (e.g. to look at a remote pet attached to the dev player). */
 	var hideOwnForTest = false
@@ -33,14 +40,14 @@ object PetRenderer {
 		val partial = mc.deltaTracker.getGameTimeDeltaPartialTick(true)
 
 		if (!hideOwnForTest) renderPet(ctx, level, ownModel, PetController.follower, partial, palette(
-			CustomPets.bodyColor.value, CustomPets.accentColor.value, CustomPets.opacity.value / 100.0,
+			CustomPets.bodyColor.value, CustomPets.accentColor.value, opacityFor(PetSpecies.own),
 		), PetData.isAfk, PetReactions.pose(PetController.age + partial))
 
 		if (CustomPets.showOthers.value) {
 			val maxDist = CustomPets.renderDistance.value
 			for (pet in RemotePets.visible()) {
 				if (pet.follower.pos.distanceTo(mc.player!!.position()) > maxDist) continue
-				renderPet(ctx, level, pet.model, pet.follower, partial, palette(pet.body, pet.accent, CustomPets.opacity.value / 100.0), false)
+				renderPet(ctx, level, pet.model, pet.follower, partial, palette(pet.body, pet.accent, opacityFor(pet.info.species)), false)
 			}
 		}
 	}
@@ -52,17 +59,26 @@ object PetRenderer {
 		val time = follower.age + partial
 		val air = follower.renderAirborne(partial)
 		// A reaction wakes a sleeping pet.
-		animate(model, time, follower.speed, air, sleeping && react == null, react)
+		model.beginFrame(time, follower.renderYaw(partial))
+		val asleep = sleeping && react == null
+		when (model.species) {
+			PetSpecies.DRAGON -> animate(model, time, follower.speed, air, asleep, react)
+			PetSpecies.RYU -> { model.reset(); animateRyu(model, time, follower.speed, asleep, react) }
+			PetSpecies.AXOLOTL -> { model.reset(); animateAxolotl(model, time, follower.speed, asleep, react) }
+			PetSpecies.GHOST -> { model.reset(); animateGhost(model, time, follower.speed, asleep, react) }
+			PetSpecies.PENGUIN -> { model.reset(); animatePenguin(model, time, follower.speed, asleep, react) }
+		}
 
 		val pos = follower.renderPos(partial)
 		val cam = ctx.levelState().cameraRenderState.pos
-		val bob = sin(time * 0.25) * 0.05 * air + (react?.lift ?: 0.0)
+		val bob = sin(time * 0.25) * 0.05 * air + (react?.lift ?: 0.0) + model.hover
 		val light = lightAt(level, BlockPos.containing(pos.x, pos.y + 0.5, pos.z))
 
 		val pose = ctx.poseStack()
 		pose.pushPose()
 		pose.translate(pos.x - cam.x, pos.y - cam.y + bob, pos.z - cam.z)
 		pose.mulPose(Axis.YP.rotationDegrees(-follower.renderYaw(partial) - (react?.spin ?: 0f)))
+		if (model.roll != 0f) pose.mulPose(Axis.ZP.rotation(model.roll))
 		pose.scale(model.scale, model.scale, model.scale)
 
 		val collector = ctx.submitNodeCollector()
@@ -194,8 +210,10 @@ object PetRenderer {
 
 	/** Packs block and sky light the same way vanilla light coords do. */
 	private fun lightAt(level: ClientLevel, pos: BlockPos): Int {
-		val block = level.getBrightness(LightLayer.BLOCK, pos)
-		val sky = level.getBrightness(LightLayer.SKY, pos)
+		// The brighter of this block and the one above: a pet whose feet dip into a slab or the ground must not turn black.
+		val up = pos.above()
+		val block = maxOf(level.getBrightness(LightLayer.BLOCK, pos), level.getBrightness(LightLayer.BLOCK, up))
+		val sky = maxOf(level.getBrightness(LightLayer.SKY, pos), level.getBrightness(LightLayer.SKY, up))
 		return (block shl 4) or (sky shl 20)
 	}
 }

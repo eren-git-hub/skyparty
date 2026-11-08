@@ -26,8 +26,9 @@ class PetsScreen : ModuleSettingsScreen("Pets") {
 		centered(g, "§7${if (PetData.isAfk) "Sleeping (you are AFK)" else "Awake"}", x + leftW / 2, y + 20, Theme.TEXT)
 
 		// Animated preview
-		val frames = PetSprites.adult.walk
-		val frame = if (PetData.isAfk) PetSprites.adult.sleep else frames[((System.currentTimeMillis() / 300) % frames.size).toInt()]
+		val sprites = PetSprites.of(dev.skyparty.pet.PetSpecies.own)
+		val frames = sprites.walk
+		val frame = if (PetData.isAfk) sprites.sleep else frames[((System.currentTimeMillis() / 300) % frames.size).toInt()]
 		val scale = 5f
 		PetDraw.draw(g, frame, x + leftW / 2f - frame.width * scale / 2, y + 40f, scale, true, PetDraw.own())
 

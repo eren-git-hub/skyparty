@@ -41,6 +41,7 @@ object Pictionary : Minigame {
 	override val minPlayers = 1
 	override val maxPlayers = 8
 	override val realtime = false
+	override val length = dev.skyparty.minigames.GameLength.MEDIUM
 
 	const val DRAW_MS = 75_000L
 	const val REVEAL_MS = 5_000L
@@ -78,8 +79,10 @@ object Pictionary : Minigame {
 	fun normalize(s: String) = s.lowercase().replace(Regex("[^a-z0-9]"), "").removePrefix("the")
 }
 
-class PictionaryScreen(val room: LobbyRoom) : GameScreen("Skyblock Pictionary") {
+class PictionaryScreen(val room: LobbyRoom) : GameScreen("Skyblock Pictionary", room) {
 	enum class Phase { WAITING, DRAW, REVEAL, OVER }
+
+	override fun inProgress() = phase != Phase.OVER
 
 	private class Line(val text: String)
 
@@ -112,12 +115,13 @@ class PictionaryScreen(val room: LobbyRoom) : GameScreen("Skyblock Pictionary") 
 		if (room.isHost) requestStart()
 	}
 
-	private fun now() = System.currentTimeMillis()
+	private fun now() = room.now()
 	private val me get() = Net.selfId
 	private val drawer get() = order.getOrNull(round)
 	private val word get() = words.getOrNull(round) ?: ""
 	private val iDraw get() = drawer == me
-	private val guessers get() = order.filter { it != drawer }
+	private val guessers get() = order.distinct().filter { it != drawer }
+	private val drawMs = Pictionary.DRAW_MS
 
 	// ------------------------------------------------------------------ protocol
 
@@ -175,7 +179,7 @@ class PictionaryScreen(val room: LobbyRoom) : GameScreen("Skyblock Pictionary") 
 			drawer?.let { scores[it] = (scores[it] ?: 0) + 1 }
 			push("§a✔ ${if (from == me) "You" else name} guessed it!")
 			play(SoundEvents.EXPERIENCE_ORB_PICKUP, 1.2f)
-			if (solved.size >= guessers.size && room.isHost) room.send("pict.end", JsonObject().apply { addProperty("r", round) })
+			if (solved.size >= guessers.size && room.isHost) once("$seed e$round") { room.send("pict.end", JsonObject().apply { addProperty("r", round) }) }
 		} else push("§7$name: §f${text.take(24)}")
 	}
 
@@ -287,8 +291,8 @@ class PictionaryScreen(val room: LobbyRoom) : GameScreen("Skyblock Pictionary") 
 		flush()
 		val t = now() - phaseStart
 		when (phase) {
-			Phase.DRAW -> if ((room.solo || room.isHost) && t >= Pictionary.DRAW_MS) {
-				if (room.solo) endRound() else room.send("pict.end", JsonObject().apply { addProperty("r", round) })
+			Phase.DRAW -> if ((room.solo || room.isHost) && t >= drawMs) {
+				if (room.solo) endRound() else once("$seed e$round") { room.send("pict.end", JsonObject().apply { addProperty("r", round) }) }
 			}
 			Phase.REVEAL -> if (t >= Pictionary.REVEAL_MS) {
 				if (round + 1 >= order.size) finish() else beginRound(round + 1)
@@ -299,15 +303,15 @@ class PictionaryScreen(val room: LobbyRoom) : GameScreen("Skyblock Pictionary") 
 
 	// ------------------------------------------------------------------ input
 
-	override fun keyPressed(event: KeyEvent): Boolean {
+	override fun onKey(event: KeyEvent): Boolean {
 		if (phase == Phase.DRAW && !iDraw) when (event.key()) {
 			GLFW.GLFW_KEY_BACKSPACE -> { input = input.dropLast(1); return true }
 			GLFW.GLFW_KEY_ENTER, GLFW.GLFW_KEY_KP_ENTER -> { sendGuess(); return true }
 		}
-		return super.keyPressed(event)
+		return super.onKey(event)
 	}
 
-	override fun charTyped(event: CharacterEvent): Boolean {
+	override fun onChar(event: CharacterEvent): Boolean {
 		if (phase != Phase.DRAW || iDraw || me in solved || !event.isAllowedChatCharacter()) return false
 		if (input.length < 24) input += event.codepointAsString()
 		return true
@@ -348,7 +352,7 @@ class PictionaryScreen(val room: LobbyRoom) : GameScreen("Skyblock Pictionary") 
 		if (sub.isNotEmpty()) centered(g, font.plainSubstrByWidth(sub, cw + paletteW), wx, top + 15, Theme.TEXT)
 		if (phase == Phase.DRAW) {
 			val half = minOf(90, cw / 2)
-			val f = (1f - t.toFloat() / Pictionary.DRAW_MS).coerceIn(0f, 1f)
+			val f = (1f - t.toFloat() / drawMs).coerceIn(0f, 1f)
 			g.fill(wx - half, top + 25, wx + half, top + 27, 0xFF2A1A44.toInt())
 			g.fill(wx - half, top + 25, wx - half + (2 * half * f).toInt(), top + 27, if (f > 0.3f) GameColors.GREEN else GameColors.RED)
 		}
@@ -437,7 +441,7 @@ class PictionaryScreen(val room: LobbyRoom) : GameScreen("Skyblock Pictionary") 
 		if (room.solo || room.isHost) {
 			button(g, cx - 100, y + 16, 92, 16, "Play again", mx, my, color = GameColors.GREEN) { if (room.solo) start(Random.nextLong()) else requestStart() }
 		} else centered(g, "§7Waiting for the host…", cx, y + 20, Theme.TEXT)
-		button(g, cx + 8, y + 16, 92, 16, "Leave", mx, my, color = GameColors.RED) { onClose() }
+		button(g, cx + 8, y + 16, 92, 16, "Leave", mx, my, color = GameColors.RED) { room.quit(); onClose() }
 	}
 
 	/** Test hooks. */

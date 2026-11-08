@@ -19,6 +19,9 @@ interface Minigame {
 	/** Real-time games need lower latency (P2P opt-in may be used later); turn-based games don't. */
 	val realtime: Boolean
 
+	/** Roughly how long one match takes; shown as info on the game card. */
+	val length: GameLength get() = GameLength.MEDIUM
+
 	/** Opens the game screen. [room] is shared by all players; null for solo play. */
 	fun open(room: Net.Room?)
 }

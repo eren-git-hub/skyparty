@@ -12,5 +12,4 @@ object ClickGuiModule : Module(
 	toggleable = false,
 ) {
 	val accent = color("Accent Color", 0xFF4FC3F7.toInt(), allowAlpha = false, description = "Main color of the interface")
-	val toggleMessages = boolean("Chat Messages", true, "Chat message when a feature is toggled")
 }

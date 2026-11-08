@@ -8,6 +8,8 @@ object ScoreboardPet : Module(
 	name = "Scoreboard Pet",
 	description = "2D version of your pet on the scoreboard. Feed it with the Feed Pet key. With chat open: drag it, right-click to pet it, click to throw a ball.",
 	category = Category.PETS,
+	defaultEnabled = true,
+	switchable = true,
 ) {
 	val size = number("Size", 1.0, 0.5, 2.0, 0.25, "x")
 	val speed = number("Speed", 1.0, 0.25, 2.0, 0.25, "x")

@@ -99,7 +99,7 @@ object Skyparty : ClientModInitializer {
 				}
 				val root = ClientCommands.literal(name)
 					.executes {
-						pendingScreen = HubScreen()
+						pendingScreen = dev.skyparty.minigames.MinigameHub.mainScreen()
 						1
 					}
 					.then(pet)
@@ -123,7 +123,7 @@ object Skyparty : ClientModInitializer {
 		}
 		while (feedPetKey.consumeClick()) {
 			val why = when {
-				!dev.skyparty.module.impl.pets.ScoreboardPet.enabled -> "turn on Scoreboard Pet in the settings first"
+				!dev.skyparty.module.impl.pets.ScoreboardPet.enabled -> "the Scoreboard Pet is turned off (Pets menu)"
 				!ScoreboardPetHud.visible -> "no scoreboard on screen"
 				else -> null
 			}
@@ -131,7 +131,7 @@ object Skyparty : ClientModInitializer {
 			else if (mc.gui.screen() == null) Chat.info("§7Can't feed your pet: $why")
 		}
 		while (openGuiKey.consumeClick()) {
-			if (mc.gui.screen() == null) mc.gui.setScreen(HubScreen())
+			if (mc.gui.screen() == null) mc.gui.setScreen(dev.skyparty.minigames.MinigameHub.mainScreen())
 		}
 		dev.skyparty.util.FocusGuard.tick(mc)
 		ModuleManager.tick(mc)

@@ -86,7 +86,7 @@ object WheelSession {
 	val mode: Mode
 		get() = when {
 			codeRoom != null -> Mode.CODE
-			DecisionWheel.enabled && DecisionWheel.autoParty.value && PartyTracker.inParty -> Mode.PARTY
+			DecisionWheel.autoParty.value && PartyTracker.inParty -> Mode.PARTY
 			else -> Mode.LOCAL
 		}
 
@@ -114,7 +114,7 @@ object WheelSession {
 		if (initialized) return
 		initialized = true
 		if (entries.isEmpty()) applyPreset(Presets.all.first())
-		PartyRoom.demand { DecisionWheel.enabled && DecisionWheel.autoParty.value }
+		PartyRoom.demand { DecisionWheel.autoParty.value }
 		PartyRoom.on("wheel.") { if (codeRoom == null && DecisionWheel.autoParty.value) handle(it) }
 		PartyRoom.roomChanged += { onRoomJoined() }
 		PartyTracker.listeners += {
@@ -157,7 +157,7 @@ object WheelSession {
 
 	private fun room(): Net.Room? {
 		codeRoom?.let { return it }
-		if (DecisionWheel.autoParty.value && DecisionWheel.enabled) {
+		if (DecisionWheel.autoParty.value) {
 			PartyRoom.sync()
 			PartyRoom.room?.let { return it }
 		}
@@ -178,6 +178,9 @@ object WheelSession {
 		leaveCode()
 		val r = Net.join("code:$code")
 		r.onMessage = ::handle
+		codeNames.clear()
+		codeNames[Net.selfId] = self
+		r.onMembersChanged = { m -> codeNames.keys.retainAll(m + Net.selfId) }
 		codeRoom = r
 		announcedHost = if (asHost) self else null
 		hostOnlyEditRemote = null
@@ -210,6 +213,27 @@ object WheelSession {
 	private fun sayHello(r: Net.Room) {
 		helloSentAt = System.currentTimeMillis()
 		r.send("wheel.hello", JsonObject())
+	}
+
+	/** Names seen in the code room (from their wheel messages). */
+	private val codeNames = linkedMapOf<java.util.UUID, String>()
+
+	/** Players of the current wheel room (party members, code room members or just you). */
+	val players: List<String>
+		get() = when (mode) {
+			Mode.PARTY -> PartyTracker.members
+			Mode.CODE -> codeNames.values.toList()
+			Mode.LOCAL -> listOf(self)
+		}
+
+	fun hasEntry(name: String) = entries.any { it.name.equals(name, ignoreCase = true) }
+
+	/** Host: whether only you or everyone may edit the entries (shared with the room). */
+	fun setHostOnlyEdit(on: Boolean) {
+		if (!isHost) return
+		DecisionWheel.onlyHostEdits.value = on
+		runCatching { dev.skyparty.config.ConfigManager.save() }
+		if (mode != Mode.LOCAL) broadcastState()
 	}
 
 	// --- Editing --------------------------------------------------------------------------------
@@ -310,6 +334,7 @@ object WheelSession {
 
 	private fun handle(msg: Net.Message) {
 		val from = msg.fromName
+		if (codeRoom != null) codeNames[msg.from] = from
 		val fromHost = host?.equals(from, ignoreCase = true) ?: false
 		when (msg.type) {
 			"wheel.hello" -> if (!from.equals(self, ignoreCase = true) && (isHost || (host == null && entries.isNotEmpty()))) broadcastState()
@@ -393,7 +418,7 @@ object WheelSession {
 	/** Party chat line for the "Send to party" button (only sent when the player clicks it). */
 	fun sendResultToParty() {
 		val r = lastResult ?: return
-		Chat.command("pc [Wheel] ${r.title}: ${r.name}")
+		Chat.command("pc [SkyParty Wheel] ${r.name}")
 	}
 
 	fun startsOf(weights: List<Int>): DoubleArray {

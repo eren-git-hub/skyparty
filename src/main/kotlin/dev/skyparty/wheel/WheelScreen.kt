@@ -1,16 +1,17 @@
 package dev.skyparty.wheel
 
+import dev.skyparty.minigames.ui.GameColors
+import dev.skyparty.minigames.ui.GameScreen
+import dev.skyparty.minigames.ui.HubTabs
 import dev.skyparty.module.impl.party.DecisionWheel
 import dev.skyparty.party.PartyTracker
 import dev.skyparty.ui.Theme
 import dev.skyparty.util.ColorUtil
 import net.minecraft.client.gui.GuiGraphicsExtractor
-import net.minecraft.client.gui.screens.Screen
 import net.minecraft.client.input.CharacterEvent
 import net.minecraft.client.input.KeyEvent
 import net.minecraft.client.input.MouseButtonEvent
 import net.minecraft.client.resources.sounds.SimpleSoundInstance
-import net.minecraft.network.chat.Component
 import net.minecraft.sounds.SoundEvents
 import org.lwjgl.glfw.GLFW
 import kotlin.math.PI
@@ -22,8 +23,14 @@ import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlin.random.Random
 
-/** `/sp wheel`: the wheel on the left, entry editor / presets / history on the right. */
-class WheelScreen : Screen(Component.literal("Decision Wheel")) {
+/** `/sp wheel` (a tab of the main menu): the wheel, the entry editor and the room panel with players. */
+class WheelScreen : GameScreen("Decision Wheel") {
+	override val backToHub = false
+
+	override fun init() {
+		super.init()
+		PartyTracker.autoCheck()
+	}
 	private class Button(
 		val x: Int, val y: Int, val w: Int, val h: Int,
 		val label: String, val enabled: Boolean, val style: Int, val action: () -> Unit,
@@ -54,84 +61,141 @@ class WheelScreen : Screen(Component.literal("Decision Wheel")) {
 	private var cy = 0.0
 	private var radius = 60.0
 	private var panelX = 0
+	private var roomX = 0
+	private var top = 40
 	private var listTop = 0
 	private var listBottom = 0
 	private val rowH = 12
 
-	override fun isPauseScreen() = false
-
 	override fun extractBackground(g: GuiGraphicsExtractor, mouseX: Int, mouseY: Int, partialTick: Float) {
-		g.fillGradient(0, 0, width, height, 0xD00B0B12.toInt(), 0xE0140F1E.toInt())
+		g.fillGradient(0, 0, width, height, 0xF00B0B12.toInt(), 0xF4140F1E.toInt())
 	}
 
-	override fun extractRenderState(g: GuiGraphicsExtractor, mouseX: Int, mouseY: Int, partialTick: Float) {
-		super.extractRenderState(g, mouseX, mouseY, partialTick)
+	override fun draw(g: GuiGraphicsExtractor, mouseX: Int, mouseY: Int, partialTick: Float) {
 		val now = System.nanoTime()
 		val dt = ((now - lastFrameNs) / 1e9).coerceIn(0.0, 0.1)
 		lastFrameNs = now
 		buttons.clear()
 
+		top = hubChrome(g, HubTabs.WHEEL)
 		layout()
 		if (WheelSession.resultSerial != seenSerial) {
 			seenSerial = WheelSession.resultSerial
 			resultShownAt = System.currentTimeMillis()
 			burstConfetti()
 		}
-		drawHeader(g)
 		drawWheel(g, dt)
 		drawWheelControls(g)
 		drawPanel(g, mouseX, mouseY)
+		drawRoomPanel(g, mouseX, mouseY)
 		drawConfetti(g, dt)
 		drawButtons(g, mouseX, mouseY)
 		drawToast(g)
 	}
 
 	private fun layout() {
-		val panelW = (width * 0.38).toInt().coerceIn(150, 210)
-		panelX = width - panelW - 8
+		val roomW = (width * 0.25).toInt().coerceIn(112, 170)
+		roomX = width - roomW - 8
+		val panelW = (width * 0.30).toInt().coerceIn(128, 200)
+		panelX = roomX - panelW - 6
 		val areaW = panelX - 8 - 8
-		val top = HEADER + 8.0
+		val top = this.top + 8.0
 		val availH = height - top - 40
 		radius = min(areaW / 2.0 - 12, availH / 2.0 - 6).coerceAtLeast(30.0)
 		cx = 8 + areaW / 2.0
 		cy = top + 6 + radius
 	}
 
-	// --- Header ---------------------------------------------------------------------------------
+	// --- Room panel (rightmost) -----------------------------------------------------------------
 
-	private fun drawHeader(g: GuiGraphicsExtractor) {
-		g.fill(0, 0, width, HEADER, Theme.HEADER)
-		for (i in 0 until width step 2) g.fill(i, HEADER - 2, i + 2, HEADER, Theme.rainbow(i / width.toFloat()))
-		g.text(font, "§l★ Decision Wheel", 8, 6, Theme.rainbow(0f, 0.6f), true)
-		val titleX = 12 + font.width("§l★ Decision Wheel")
-		val title = displayTitle()
-		g.text(font, "§8· §f$title", titleX, 6, Theme.TEXT, true)
+	private var playerScroll = 0
 
-		// Room badge on the right
-		var x = width - 8
-		when (WheelSession.mode) {
-			WheelSession.Mode.CODE -> {
-				x = headerButton(x, "Leave", 0) { WheelSession.leaveCode() }
-				x = headerButton(x, "Copy", 1) {
-					minecraft.keyboardHandler.clipboard = WheelSession.roomCode ?: ""
-					showToast("Room code copied to clipboard")
-				}
-				val text = "§7Room §f§l${WheelSession.roomCode}"
-				x -= font.width(text) + 6
-				g.text(font, text, x, 6, Theme.TEXT, true)
+	/** Wheel rooms (like the game rooms in the games tab), host settings and the players with "+" buttons. */
+	private fun drawRoomPanel(g: GuiGraphicsExtractor, mx: Int, my: Int) {
+		val x0 = roomX
+		val x1 = width - 8
+		val w = x1 - x0
+		val y0 = top + 6
+		val y1 = height - 8
+		Shapes.roundRect(g, x0, y0, x1, y1, 4, 0xC0101016.toInt())
+		val ix = x0 + 5
+		val iw = w - 10
+		var y = y0 + 5
+		g.text(font, "§lWheel rooms", ix, y, Theme.accent, false)
+		y += 12
+
+		// One row per room you can be in: the party wheel (when in a party), your code room, or local.
+		fun row(label: String, sub: String, current: Boolean) {
+			g.fill(ix, y, ix + iw, y + 22, if (current) ColorUtil.withAlpha(Theme.accent, 0x40) else GameColors.CARD)
+			if (current) g.fill(ix, y, ix + 2, y + 22, Theme.accent(0xFF))
+			g.text(font, font.plainSubstrByWidth(label, iw - 8), ix + 5, y + 3, Theme.TEXT, false)
+			g.text(font, font.plainSubstrByWidth(sub, iw - 8), ix + 5, y + 12, Theme.TEXT_DIM, false)
+			y += 24
+		}
+		val mode = WheelSession.mode
+		if (PartyTracker.inParty && DecisionWheel.autoParty.value) {
+			row("§a● §fParty wheel", "§7${PartyTracker.members.size} players", mode == WheelSession.Mode.PARTY)
+		}
+		if (mode == WheelSession.Mode.CODE) {
+			row("§fRoom §l${WheelSession.roomCode}", "§7${WheelSession.players.size} players", true)
+			val bw = (iw - 3) / 2
+			buttons += Button(ix, y, bw, 13, "Copy code", true, 1) {
+				minecraft.keyboardHandler.clipboard = WheelSession.roomCode ?: ""
+				showToast("Room code copied to clipboard")
 			}
-			WheelSession.Mode.PARTY -> {
-				x = headerButton(x, newRoomLabel(), 0) { createRoom() }
-				val text = "§a● §fParty room §7(${PartyTracker.members.size})"
-				x -= font.width(text) + 6
-				g.text(font, text, x, 6, Theme.TEXT, true)
-			}
-			WheelSession.Mode.LOCAL -> {
-				x = headerButton(x, newRoomLabel(), 1) { createRoom() }
-				val text = "§8● §7Local"
-				x -= font.width(text) + 6
-				g.text(font, text, x, 6, Theme.TEXT, true)
-			}
+			buttons += Button(ix + bw + 3, y, bw, 13, "Leave", true, 3) { WheelSession.leaveCode() }
+			y += 16
+		} else {
+			if (mode == WheelSession.Mode.LOCAL) row("§7● Local wheel", "§8Only you see it", true)
+			buttons += Button(ix, y, iw, 13, newRoomLabel(), true, 1) { createRoom() }
+			y += 16
+		}
+
+		// Host + who may edit
+		val host = WheelSession.host
+		val hostText = when {
+			mode == WheelSession.Mode.LOCAL -> null
+			host == null -> "§7Host: §8waiting…"
+			WheelSession.isHost -> "§7Host: §ayou"
+			else -> "§7Host: §f$host"
+		}
+		if (hostText != null) {
+			y += 2
+			g.text(font, font.plainSubstrByWidth(hostText, iw), ix, y, Theme.TEXT, false)
+			y += 11
+			g.text(font, "§7Edit:", ix, y + 2, Theme.TEXT, false)
+			val ex = ix + font.width("Edit:") + 4
+			val bw = (ix + iw - ex - 2) / 2
+			val only = WheelSession.hostOnlyEdit
+			val canSet = WheelSession.isHost
+			buttons += Button(ex, y, bw, 12, "Host", canSet || only, if (only) 2 else 4) { WheelSession.setHostOnlyEdit(true) }
+			buttons += Button(ex + bw + 2, y, bw, 12, "All", canSet || !only, if (!only) 2 else 4) { WheelSession.setHostOnlyEdit(false) }
+			y += 15
+		}
+
+		// Players: "+" puts a name on the wheel.
+		y += 2
+		g.fill(ix, y, ix + iw, y + 1, GameColors.LINE)
+		y += 4
+		val players = WheelSession.players
+		val canEdit = WheelSession.canEdit
+		g.text(font, "§lPlayers §r§7(${players.size})", ix, y, Theme.TEXT, false)
+		val missing = players.filter { !WheelSession.hasEntry(it) }
+		if (canEdit && missing.size > 1) {
+			val aw = font.width("+ All") + 8
+			buttons += Button(ix + iw - aw, y - 2, aw, 11, "+ All", true, 2) { missing.forEach { WheelSession.add(it) } }
+		}
+		y += 12
+		val visible = ((y1 - 4 - y) / 12).coerceAtLeast(1)
+		playerScroll = playerScroll.coerceIn(0, (players.size - visible).coerceAtLeast(0))
+		for ((vi, name) in players.drop(playerScroll).take(visible).withIndex()) {
+			val ry = y + vi * 12
+			val on = WheelSession.hasEntry(name)
+			g.text(font, font.plainSubstrByWidth((if (on) "§a✔ §f" else "§f") + name, iw - 16), ix + 2, ry + 2, Theme.TEXT, false)
+			if (canEdit && !on) buttons += Button(ix + iw - 12, ry + 1, 11, 10, "+", true, 2) { WheelSession.add(name) }
+		}
+		if (mode == WheelSession.Mode.LOCAL && players.size <= 1) {
+			g.text(font, font.plainSubstrByWidth("§8Join a party or a code room", iw), ix + 2, y + 14, Theme.TEXT, false)
 		}
 	}
 
@@ -152,12 +216,6 @@ class WheelScreen : Screen(Component.literal("Decision Wheel")) {
 		val code = WheelSession.createRoom()
 		minecraft.keyboardHandler.clipboard = code
 		showToast("Room $code created – code copied")
-	}
-
-	private fun headerButton(right: Int, label: String, style: Int, action: () -> Unit): Int {
-		val w = font.width(label) + 10
-		buttons += Button(right - w, 3, w, HEADER - 6, label, true, style, action)
-		return right - w - 4
 	}
 
 	private fun displayTitle(): String {
@@ -313,8 +371,10 @@ class WheelScreen : Screen(Component.literal("Decision Wheel")) {
 	private fun drawWheelControls(g: GuiGraphicsExtractor) {
 		val y = (cy + radius + 12).toInt()
 		val showParty = DecisionWheel.sendToParty.value && WheelSession.lastResult != null && !WheelSession.spinning
-		val spinW = 84
-		val partyW = 92
+		// Both buttons always fit next to each other inside the wheel area.
+		val areaW = panelX - 16
+		val spinW = minOf(84, if (showParty) (areaW - 6) / 2 else areaW)
+		val partyW = minOf(92, (areaW - 6) / 2)
 		val total = spinW + if (showParty) partyW + 6 else 0
 		var x = cx.toInt() - total / 2
 		val spinLabel = if (WheelSession.spinning) "Spinning…" else "SPIN"
@@ -344,30 +404,25 @@ class WheelScreen : Screen(Component.literal("Decision Wheel")) {
 
 	private fun drawPanel(g: GuiGraphicsExtractor, mx: Int, my: Int) {
 		val x0 = panelX
-		val x1 = width - 8
-		val y0 = HEADER + 6
+		val x1 = roomX - 6
+		val y0 = top + 6
 		val y1 = height - 8
 		Shapes.roundRect(g, x0, y0, x1, y1, 4, 0xC0101016.toInt())
 		var y = y0 + 5
 
-		// Host line
-		val host = WheelSession.host
-		val hostText = when {
-			WheelSession.mode == WheelSession.Mode.LOCAL -> "§7Only you see this wheel"
-			host == null -> "§7Host: §8waiting… §7(anyone can edit)"
-			WheelSession.isHost -> "§7Host: §ayou"
-			else -> "§7Host: §f$host" + if (WheelSession.hostOnlyEdit) " §8(edits locked)" else ""
-		}
-		g.text(font, font.plainSubstrByWidth(hostText, x1 - x0 - 10), x0 + 5, y, Theme.TEXT, false)
-		y += 12
-
 		val n = WheelSession.entries.size
-		g.text(font, "§lEntries §r§7($n)", x0 + 5, y, Theme.TEXT, false)
+		val shownTitle = fitBold(displayTitle(), x1 - x0 - 14 - font.width(" ($n)"))
+		g.text(font, bold(shownTitle), x0 + 5, y, Theme.TEXT, false)
+		g.text(font, "§7($n)", x0 + 9 + boldWidth(shownTitle), y, Theme.TEXT, false)
+		if (!WheelSession.canEdit) {
+			y += 10
+			g.text(font, font.plainSubstrByWidth("§8Only ${WheelSession.host} can edit", x1 - x0 - 10), x0 + 5, y, Theme.TEXT, false)
+		}
 		y += 11
 
 		// Reserve the bottom: add row, presets, history
-		val historyLines = 4
-		val bottomH = 16 + 16 + 12 + historyLines * 10 + 6
+		val historyLines = if (height > 300) 4 else 2
+		val bottomH = 16 + 16 + 12 + historyLines * 10 + 6 + (if (presetRows(x1 - x0) > 1) 15 else 0)
 		listTop = y
 		listBottom = y1 - bottomH
 		val visible = ((listBottom - listTop) / rowH).coerceAtLeast(1)
@@ -428,19 +483,21 @@ class WheelScreen : Screen(Component.literal("Decision Wheel")) {
 		buttons += Button(fieldX1 + 3, y, 27, 14, "Add", canEdit && input.isNotBlank(), 2) { submitInput() }
 		y += 17
 
-		// Presets
+		// Presets (+ Clear): one row when the labels fit, otherwise two.
 		val presets = Presets.all
 		val gap = 3
-		val count = presets.size + 1
-		val bw = (x1 - x0 - 10 - gap * (count - 1)) / count
-		presets.forEachIndexed { i, p ->
-			buttons += Button(x0 + 5 + i * (bw + gap), y, bw, 13, p.button, canEdit, 1) {
-				WheelSession.applyPreset(p)
+		val labels = presets.map { it.button } + "Clear"
+		val perRow = if (presetRows(x1 - x0) > 1) (labels.size + 1) / 2 else labels.size
+		val bw = (x1 - x0 - 10 - gap * (perRow - 1)) / perRow
+		labels.forEachIndexed { i, label ->
+			val bx = x0 + 5 + (i % perRow) * (bw + gap)
+			val by = y + (i / perRow) * 15
+			if (i < presets.size) buttons += Button(bx, by, bw, 13, label, canEdit, 1) {
+				WheelSession.applyPreset(presets[i])
 				scroll = 0
-			}
+			} else buttons += Button(bx, by, bw, 13, label, canEdit, 0) { WheelSession.clear() }
 		}
-		buttons += Button(x0 + 5 + presets.size * (bw + gap), y, bw, 13, "Clear", canEdit, 0) { WheelSession.clear() }
-		y += 17
+		y += 17 + if (perRow < labels.size) 15 else 0
 
 		// History
 		g.text(font, "§lHistory", x0 + 5, y, Theme.TEXT, false)
@@ -487,9 +544,18 @@ class WheelScreen : Screen(Component.literal("Decision Wheel")) {
 			Shapes.roundRect(g, b.x, b.y, b.x + b.w, b.y + b.h, radius, fill)
 			val textColor = if (b.enabled) 0xFFFFFFFF.toInt() else 0xFF8A8A96.toInt()
 			val label = if (b.style == 2 && b.h >= 18) "§l${b.label}" else b.label
-			g.centeredText(font, label, b.x + b.w / 2, b.y + (b.h - 8) / 2 + 1, textColor)
+			g.centeredText(font, fitLabel(label, b.w - 4), b.x + b.w / 2, b.y + (b.h - 8) / 2 + 1, textColor)
 		}
 	}
+
+	/** 1 when the preset buttons (+ Clear) fit in one row of a panel [w] wide, else 2. */
+	private fun presetRows(w: Int): Int {
+		val labels = Presets.all.map { it.button } + "Clear"
+		val bw = (w - 10 - 3 * (labels.size - 1)) / labels.size
+		return if (labels.all { font.width(it) + 6 <= bw }) 1 else 2
+	}
+
+	private fun fitLabel(s: String, w: Int) = if (font.width(s) <= w) s else font.plainSubstrByWidth(s, w)
 
 	private fun showToast(text: String) {
 		toast = text
@@ -506,7 +572,7 @@ class WheelScreen : Screen(Component.literal("Decision Wheel")) {
 		val alpha = if (age > 2000) ((2500 - age) / 500.0 * 255).toInt() else 255
 		val w = font.width(t) + 16
 		val x = (width - w) / 2
-		val y = HEADER + 6
+		val y = top + 6
 		Shapes.roundRect(g, x, y, x + w, y + 16, 4, ColorUtil.withAlpha(0xFF1A1A24.toInt(), (alpha * 0.9).toInt()))
 		g.fill(x + 3, y + 15, x + w - 3, y + 16, Theme.accent(alpha))
 		g.centeredText(font, t, width / 2, y + 4, ColorUtil.withAlpha(0xFFFFFFFF.toInt(), alpha.coerceAtLeast(5)))
@@ -580,6 +646,10 @@ class WheelScreen : Screen(Component.literal("Decision Wheel")) {
 	}
 
 	override fun mouseScrolled(mouseX: Double, mouseY: Double, scrollX: Double, scrollY: Double): Boolean {
+		if (mouseX >= roomX) {
+			playerScroll -= scrollY.toInt().coerceIn(-3, 3)
+			return true
+		}
 		if (mouseX >= panelX) {
 			scroll -= scrollY.toInt().coerceIn(-3, 3)
 			return true
@@ -587,14 +657,14 @@ class WheelScreen : Screen(Component.literal("Decision Wheel")) {
 		return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY)
 	}
 
-	override fun keyPressed(event: KeyEvent): Boolean {
+	override fun onKey(event: KeyEvent): Boolean {
 		val key = event.key()
 		if (inputFocused) {
 			when (key) {
 				GLFW.GLFW_KEY_ESCAPE -> inputFocused = false
 				GLFW.GLFW_KEY_BACKSPACE -> input = input.dropLast(1)
 				GLFW.GLFW_KEY_ENTER, GLFW.GLFW_KEY_KP_ENTER -> submitInput()
-				else -> return super.keyPressed(event).let { true }
+				else -> return super.onKey(event).let { true }
 			}
 			return true
 		}
@@ -602,18 +672,16 @@ class WheelScreen : Screen(Component.literal("Decision Wheel")) {
 			doSpin()
 			return true
 		}
-		return super.keyPressed(event)
+		return super.onKey(event)
 	}
 
-	override fun charTyped(event: CharacterEvent): Boolean {
+	override fun onChar(event: CharacterEvent): Boolean {
 		if (!inputFocused || !event.isAllowedChatCharacter()) return false
 		if (input.length < WheelSession.MAX_NAME) input += event.codepointAsString()
 		return true
 	}
 
 	companion object {
-		const val HEADER = 20
-
 		val PALETTE = intArrayOf(
 			0xFFFF5D73.toInt(), // coral red
 			0xFFFF9F43.toInt(), // orange

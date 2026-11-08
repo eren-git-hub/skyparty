@@ -30,12 +30,15 @@ object PetRace : Minigame {
 	override val minPlayers = 1
 	override val maxPlayers = 8
 	override val realtime = false
+	override val length = dev.skyparty.minigames.GameLength.SHORT
 
 	override fun open(room: Net.Room?) = MinigameHub.openScreen(PetRaceScreen(LobbyRoom.of(room, id)))
 }
 
-class PetRaceScreen(val room: LobbyRoom) : GameScreen("Pet Race") {
+class PetRaceScreen(val room: LobbyRoom) : GameScreen("Pet Race", room) {
 	enum class Phase { SETUP, BETTING, RACING, FINISHED }
+
+	override fun inProgress() = phase != Phase.FINISHED
 
 	class Racer(val id: String, val name: String, val bot: Boolean, val self: Boolean, val colors: PetDraw.Colors) {
 		var pos = 0f
@@ -56,7 +59,7 @@ class PetRaceScreen(val room: LobbyRoom) : GameScreen("Pet Race") {
 	private var lastStepAt = 0L
 	private var bettingEnds = 0L
 	private var finishedAt = 0L
-	private var setupAt = System.currentTimeMillis() + 300
+	private var setupAt = room.now() + 300
 
 	private var betRacer: String? = null
 	private var betAmount = 25
@@ -66,6 +69,7 @@ class PetRaceScreen(val room: LobbyRoom) : GameScreen("Pet Race") {
 	private val otherBets = linkedMapOf<String, String>()
 
 	private val solo get() = room.solo
+	private val track = TRACK
 
 	init {
 		room.onMessage = ::onMessage
@@ -101,8 +105,8 @@ class PetRaceScreen(val room: LobbyRoom) : GameScreen("Pet Race") {
 		room.send("petrace.go")
 	}
 
-	override fun tick() {
-		val now = System.currentTimeMillis()
+	override fun gameTick() {
+		val now = room.now()
 		if (!room.isHost) return
 		when (phase) {
 			Phase.SETUP -> if (now >= setupAt) {
@@ -147,7 +151,7 @@ class PetRaceScreen(val room: LobbyRoom) : GameScreen("Pet Race") {
 				otherBets.clear()
 				if (betRacer != null && racers.none { it.id == betRacer }) betRacer = null
 				val betMs = p["betMs"]?.asLong ?: 0L
-				bettingEnds = if (betMs > 0) System.currentTimeMillis() + betMs else Long.MAX_VALUE
+				bettingEnds = if (betMs > 0) room.now() + betMs else Long.MAX_VALUE
 				phase = Phase.BETTING
 			}
 			"petrace.bet" -> if (msg.from != Net.selfId) {
@@ -158,8 +162,8 @@ class PetRaceScreen(val room: LobbyRoom) : GameScreen("Pet Race") {
 				if (msg.from != room.host || phase != Phase.BETTING) return
 				placeBet()
 				phase = Phase.RACING
-				nextStepAt = System.currentTimeMillis() + 600
-				lastStepAt = System.currentTimeMillis()
+				nextStepAt = room.now() + 600
+				lastStepAt = room.now()
 			}
 			"petrace.step.rng" -> {
 				if (msg.from != room.host || phase != Phase.RACING) return
@@ -182,7 +186,7 @@ class PetRaceScreen(val room: LobbyRoom) : GameScreen("Pet Race") {
 	/** Deterministic from (roll, step): every client computes the same advances. */
 	private fun applyStep(s: Int, roll: Double) {
 		step = s
-		val now = System.currentTimeMillis()
+		val now = room.now()
 		lastStepAt = now
 		val rnd = Random((roll * (1L shl 52)).toLong() xor (s.toLong() * 0x9E3779B97F4A7C15uL.toLong()))
 		for (r in racers) {
@@ -198,7 +202,7 @@ class PetRaceScreen(val room: LobbyRoom) : GameScreen("Pet Race") {
 			}
 			if (!r.finished) {
 				r.pos += adv
-				if (r.pos >= TRACK) r.finishStep = s
+				if (r.pos >= track) r.finishStep = s
 			}
 		}
 		if (racers.all { it.finished }) finish()
@@ -213,7 +217,7 @@ class PetRaceScreen(val room: LobbyRoom) : GameScreen("Pet Race") {
 
 	private fun finish() {
 		phase = Phase.FINISHED
-		finishedAt = System.currentTimeMillis()
+		finishedAt = room.now()
 		val winner = standings().first()
 		if (placedOn == winner.id && placedBet > 0) {
 			payout = placedBet * racers.size
@@ -252,7 +256,7 @@ class PetRaceScreen(val room: LobbyRoom) : GameScreen("Pet Race") {
 			Phase.RACING -> drawLive(g, tx, by, tw, bottomH)
 			Phase.FINISHED -> {
 				drawLive(g, tx, by, tw, bottomH)
-				if (System.currentTimeMillis() - finishedAt > 700) drawPodium(g, mouseX, mouseY)
+				if (room.now() - finishedAt > 700) drawPodium(g, mouseX, mouseY)
 			}
 		}
 	}
@@ -262,7 +266,7 @@ class PetRaceScreen(val room: LobbyRoom) : GameScreen("Pet Race") {
 		g.fill(x, y, x + w, y + h, 0xFF2C4A2A.toInt())
 		g.outline(x, y, w, h, 0xFF1A2E19.toInt())
 		if (racers.isEmpty()) return
-		val now = System.currentTimeMillis()
+		val now = room.now()
 		val laneH = h / racers.size
 		val scale = when {
 			laneH >= 26 -> 2f
@@ -287,8 +291,8 @@ class PetRaceScreen(val room: LobbyRoom) : GameScreen("Pet Race") {
 			val frame = if (moving) sprites.walk[((now / 130 + i) % sprites.walk.size).toInt()] else sprites.idle
 			val sw = frame.width * scale
 			val sh = frame.height * scale
-			val display = Mth.lerp(t, r.prevPos, r.pos).coerceAtMost(TRACK + 2f)
-			val px = startX + (display / TRACK) * (finishX - startX - sw * 0.6f)
+			val display = Mth.lerp(t, r.prevPos, r.pos).coerceAtMost(track + 2f)
+			val px = startX + (display / track) * (finishX - startX - sw * 0.6f)
 			val hop = if (r.boostUntil > now) -2f * scale else 0f
 			val py = ly + (laneH - sh) / 2f + hop + if (laneH >= 20) 3f else 0f
 			PetDraw.draw(g, frame, px, py, scale, true, r.colors)
@@ -296,16 +300,18 @@ class PetRaceScreen(val room: LobbyRoom) : GameScreen("Pet Race") {
 			if (r.stumbleUntil > now) g.text(font, "§c!", (px + sw).toInt() + 1, py.toInt(), Theme.TEXT, true)
 			// Name tag
 			val tag = (if (r.self) "§b" else if (r.bot) "§7" else "§f") + r.name + if (placedOn == r.id || (phase == Phase.BETTING && betRacer == r.id)) " §6◆" else ""
-			if (laneH >= 20) g.text(font, tag, (px + sw / 2 - font.width(tag) / 2).toInt().coerceAtLeast(x + 2), ly + 1, Theme.TEXT, true)
-			else g.text(font, tag, (px + sw + 4).toInt(), (ly + (laneH - 8) / 2), Theme.TEXT, true)
+			// Beside the pet (never on the lane lines): right of it, or left of it near the finish.
+			val tw = font.width(tag)
+			val tx = if (px + sw + 6 + tw < finishX) (px + sw + 6).toInt() else (px - tw - 4).toInt().coerceAtLeast(x + 2)
+			g.text(font, tag, tx, ly + (laneH - 8) / 2 + if (laneH >= 20) 2 else 0, Theme.TEXT, true)
 		}
 	}
 
 	private fun drawBetting(g: GuiGraphicsExtractor, x: Int, y: Int, w: Int, h: Int, mx: Int, my: Int) {
 		panel(g, x, y, w, h)
 		val odds = racers.size
-		g.text(font, "§lPick a winner", x + 6, y + 5, Theme.accent, true)
-		g.text(font, "§7pays §ex$odds", x + 10 + font.width("§lPick a winner"), y + 5, Theme.TEXT, false)
+		g.text(font, bold("Pick a winner"), x + 6, y + 5, Theme.accent, true)
+		g.text(font, "§7pays §ex$odds", x + 11 + boldWidth("Pick a winner"), y + 5, Theme.TEXT, false)
 		// Racer chips
 		var cx = x + 6
 		val cy = y + 18
@@ -347,10 +353,10 @@ class PetRaceScreen(val room: LobbyRoom) : GameScreen("Pet Race") {
 
 		val bw = 76
 		if (room.isHost) {
-			val label = if (solo) "Start race" else "Start (${((bettingEnds - System.currentTimeMillis()) / 1000 + 1).coerceIn(0, 99)}s)"
+			val label = if (solo) "Start race" else "Start (${((bettingEnds - room.now()) / 1000 + 1).coerceIn(0, 99)}s)"
 			button(g, x + w - bw - 6, y + h - 22, bw, 16, label, mx, my, color = GameColors.GREEN) { startRace() }
 		} else {
-			val left = ((bettingEnds - System.currentTimeMillis()) / 1000 + 1).coerceAtLeast(0)
+			val left = ((bettingEnds - room.now()) / 1000 + 1).coerceAtLeast(0)
 			g.text(font, "§7Starts in §f${left}s", x + w - 70, y + h - 18, Theme.TEXT, false)
 		}
 		if (otherBets.isNotEmpty()) {
@@ -379,7 +385,7 @@ class PetRaceScreen(val room: LobbyRoom) : GameScreen("Pet Race") {
 			else -> "§7Your bet: §e$placedBet §7on §f${racers.firstOrNull { it.id == placedOn }?.name}"
 		}
 		g.text(font, betLine, x + 6, y + 36, Theme.TEXT, false)
-		val progress = (order.firstOrNull()?.pos ?: 0f) / TRACK
+		val progress = (order.firstOrNull()?.pos ?: 0f) / track
 		g.fill(x + 6, y + h - 10, x + w - 6, y + h - 7, 0xFF2A2A36.toInt())
 		g.fill(x + 6, y + h - 10, x + 6 + ((w - 12) * progress.coerceIn(0f, 1f)).toInt(), y + h - 7, Theme.accent(0xFF))
 	}
@@ -407,7 +413,7 @@ class PetRaceScreen(val room: LobbyRoom) : GameScreen("Pet Race") {
 			g.fill(bx, baseY - blockH, bx + colW, baseY - blockH + 2, color)
 			centered(g, "${idx + 1}", cx, baseY - blockH + 5, color)
 			val sprite = PetSprites.adult.idle
-			val bounce = if (idx == 0) (Math.abs(Math.sin(System.currentTimeMillis() / 180.0)) * -3).toFloat() else 0f
+			val bounce = if (idx == 0) (Math.abs(Math.sin(room.now() / 180.0)) * -3).toFloat() else 0f
 			PetDraw.draw(g, sprite, cx - sprite.width.toFloat(), baseY - blockH - sprite.height * 2f - 1 + bounce, 2f, true, r.colors)
 			val name = font.plainSubstrByWidth(r.name, colW + 4)
 			centered(g, (if (r.self) "§b" else "§f") + name, cx, baseY + 3, Theme.TEXT)
@@ -422,7 +428,7 @@ class PetRaceScreen(val room: LobbyRoom) : GameScreen("Pet Race") {
 		if (room.isHost) {
 			button(g, px + pw / 2 - bw - 3, py + ph + 4, bw, 15, "Race again", mx, my, color = GameColors.GREEN) { sendSetup() }
 		}
-		button(g, if (room.isHost) px + pw / 2 + 3 else px + pw / 2 - bw / 2, py + ph + 4, bw, 15, "Close", mx, my, color = GameColors.RED) { onClose() }
+		button(g, if (room.isHost) px + pw / 2 + 3 else px + pw / 2 - bw / 2, py + ph + 4, bw, 15, "Close", mx, my, color = GameColors.RED) { room.quit(); onClose() }
 	}
 
 	companion object {

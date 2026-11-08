@@ -28,12 +28,16 @@ object ReactionDuel : Minigame {
 	override val minPlayers = 1
 	override val maxPlayers = 8
 	override val realtime = true
+	override val length = dev.skyparty.minigames.GameLength.SHORT
 
 	override fun open(room: Net.Room?) = MinigameHub.openScreen(ReactionScreen(LobbyRoom.of(room, id)))
 }
 
-class ReactionScreen(val room: LobbyRoom) : GameScreen("Reaction Duel") {
+class ReactionScreen(val room: LobbyRoom) : GameScreen("Reaction Duel", room) {
 	enum class Phase { READY, WAITING, GO, ROUND_END, MATCH_END }
+
+	// Solo is endless practice: nothing to keep when you close it.
+	override fun inProgress() = !room.solo && phase != Phase.MATCH_END
 	class Result(val ms: Int, val foul: Boolean)
 
 	var phase = Phase.READY
@@ -46,7 +50,7 @@ class ReactionScreen(val room: LobbyRoom) : GameScreen("Reaction Duel") {
 	private var goNanos = 0L
 	private var goAt = 0L
 	private var roundEndAt = 0L
-	private var startAt = System.currentTimeMillis() + 2500
+	private var startAt = room.now() + 2500
 	private var myClicked = false
 	private var myResult: Result? = null
 	private var roundWinner: UUID? = null
@@ -58,6 +62,9 @@ class ReactionScreen(val room: LobbyRoom) : GameScreen("Reaction Duel") {
 	private val soloTimes = ArrayDeque<Int>()
 
 	private val solo get() = room.solo
+	/** Best of 5, first to 3. */
+	private val rounds = 5
+	private val winPoints = 3
 
 	init {
 		room.onMessage = ::onMessage
@@ -74,7 +81,7 @@ class ReactionScreen(val room: LobbyRoom) : GameScreen("Reaction Duel") {
 				round = p["round"]?.asInt ?: (round + 1)
 				val roll = p["roll"]?.asDouble ?: Math.random()
 				delayMs = 1200L + (roll * 3300).toLong()
-				waitStart = System.currentTimeMillis()
+				waitStart = room.now()
 				results.clear()
 				myClicked = false
 				myResult = null
@@ -95,7 +102,7 @@ class ReactionScreen(val room: LobbyRoom) : GameScreen("Reaction Duel") {
 				lastTimes.clear()
 				round = 0
 				phase = Phase.READY
-				startAt = System.currentTimeMillis() + 2000
+				startAt = room.now() + 2000
 			}
 		}
 	}
@@ -122,7 +129,7 @@ class ReactionScreen(val room: LobbyRoom) : GameScreen("Reaction Duel") {
 				else -> "${r.ms} ms"
 			}
 		}
-		roundEndAt = System.currentTimeMillis()
+		roundEndAt = room.now()
 		val mine = results[Net.selfId]
 		if (solo) {
 			if (mine != null && !mine.foul) {
@@ -141,7 +148,7 @@ class ReactionScreen(val room: LobbyRoom) : GameScreen("Reaction Duel") {
 		if (mine != null && !mine.foul) {
 			MinigameStore.submit(ReactionDuel.id, mine.ms.toDouble(), lowerIsBetter = true, display = "${mine.ms} ms")
 		}
-		val over = points.values.any { it >= WIN_POINTS } || round >= ROUNDS
+		val over = points.values.any { it >= winPoints } || round >= rounds
 		phase = if (over) Phase.MATCH_END else Phase.ROUND_END
 		if (over && matchWinner() == Net.selfId) MinigameStore.addTokens(15)
 	}
@@ -151,7 +158,7 @@ class ReactionScreen(val room: LobbyRoom) : GameScreen("Reaction Duel") {
 
 	/** The player's click / key press. */
 	fun react() {
-		val now = System.currentTimeMillis()
+		val now = room.now()
 		updatePhase()
 		when (phase) {
 			Phase.READY -> if (solo) sendRound(round + 1)
@@ -166,7 +173,7 @@ class ReactionScreen(val room: LobbyRoom) : GameScreen("Reaction Duel") {
 			}
 			Phase.GO -> if (!myClicked) {
 				myClicked = true
-				val ms = ((System.nanoTime() - goNanos) / 1_000_000).toInt()
+				val ms = ((room.nanos() - goNanos) / 1_000_000).toInt()
 				myResult = Result(ms, false)
 				room.send("reaction.click", JsonObject().apply {
 					addProperty("round", round)
@@ -179,17 +186,17 @@ class ReactionScreen(val room: LobbyRoom) : GameScreen("Reaction Duel") {
 	}
 
 	private fun updatePhase() {
-		if (phase == Phase.WAITING && System.currentTimeMillis() >= waitStart + delayMs) {
+		if (phase == Phase.WAITING && room.now() >= waitStart + delayMs) {
 			phase = Phase.GO
-			goNanos = System.nanoTime()
-			goAt = System.currentTimeMillis()
+			goNanos = room.nanos()
+			goAt = room.now()
 		}
 	}
 
-	override fun tick() {
+	override fun gameTick() {
 		updatePhase()
 		if (!room.isHost || solo) return
-		val now = System.currentTimeMillis()
+		val now = room.now()
 		when (phase) {
 			Phase.READY -> if (now >= startAt && round == 0) {
 				startAt = Long.MAX_VALUE
@@ -217,12 +224,12 @@ class ReactionScreen(val room: LobbyRoom) : GameScreen("Reaction Duel") {
 		return false
 	}
 
-	override fun keyPressed(event: KeyEvent): Boolean {
+	override fun onKey(event: KeyEvent): Boolean {
 		if (event.key() == GLFW.GLFW_KEY_SPACE) {
 			react()
 			return true
 		}
-		return super.keyPressed(event)
+		return super.onKey(event)
 	}
 
 	override fun removed() {
@@ -236,7 +243,7 @@ class ReactionScreen(val room: LobbyRoom) : GameScreen("Reaction Duel") {
 
 	override fun draw(g: GuiGraphicsExtractor, mouseX: Int, mouseY: Int, partialTick: Float) {
 		updatePhase()
-		val sub = if (solo) "Practice" else "Round ${round.coerceAtLeast(1)} / $ROUNDS · first to $WIN_POINTS"
+		val sub = if (solo) "Practice" else "Round ${round.coerceAtLeast(1)} / $rounds · first to $winPoints"
 		val top = header(g, "Reaction Duel", sub)
 		val margin = 8
 		val sideW = (width * 0.3f).toInt().coerceIn(110, 160)
@@ -251,7 +258,7 @@ class ReactionScreen(val room: LobbyRoom) : GameScreen("Reaction Duel") {
 	}
 
 	private fun drawArena(g: GuiGraphicsExtractor, x: Int, y: Int, w: Int, h: Int, mx: Int, my: Int) {
-		val now = System.currentTimeMillis()
+		val now = room.now()
 		val cx = x + w / 2
 		val cy = y + h / 2
 		val color = when (phase) {
@@ -272,7 +279,7 @@ class ReactionScreen(val room: LobbyRoom) : GameScreen("Reaction Duel") {
 				} else {
 					val left = ((startAt - now) / 1000 + 1).coerceIn(0, 9)
 					bigText(g, if (startAt == Long.MAX_VALUE) "…" else "$left", cx, cy - 30, 4f, Theme.accent)
-					centered(g, "Get ready! Best of $ROUNDS – a false start costs a point.", cx, cy + 10, Theme.TEXT_DIM)
+					centered(g, "Get ready! Best of $rounds – a false start costs a point.", cx, cy + 10, Theme.TEXT_DIM)
 				}
 			}
 			Phase.WAITING -> {
@@ -346,7 +353,7 @@ class ReactionScreen(val room: LobbyRoom) : GameScreen("Reaction Duel") {
 				room.send("reaction.reset")
 			}
 		}
-		button(g, if (room.isHost) cx + 3 else cx - bw / 2, y + h - 22, bw, 15, "Close", mx, my, color = GameColors.RED) { onClose() }
+		button(g, if (room.isHost) cx + 3 else cx - bw / 2, y + h - 22, bw, 15, "Close", mx, my, color = GameColors.RED) { room.quit(); onClose() }
 	}
 
 	private fun rating(ms: Int): Pair<String, Int> = when {
@@ -389,8 +396,8 @@ class ReactionScreen(val room: LobbyRoom) : GameScreen("Reaction Duel") {
 			val name = font.plainSubstrByWidth(room.nameOf(id), w - 50)
 			g.text(font, (if (id == Net.selfId) "§b" else "§f") + name, x + 6, cy, Theme.TEXT, false)
 			// Point pips
-			for (i in 0 until WIN_POINTS) {
-				val px = x + w - 8 - (WIN_POINTS - i) * 7
+			for (i in 0 until winPoints) {
+				val px = x + w - 8 - (winPoints - i) * 7
 				g.fill(px, cy + 1, px + 5, cy + 6, if (i < pts) GameColors.GOLD else 0xFF3A3A46.toInt())
 			}
 			cy += 10
@@ -401,7 +408,5 @@ class ReactionScreen(val room: LobbyRoom) : GameScreen("Reaction Duel") {
 	}
 
 	companion object {
-		const val ROUNDS = 5
-		const val WIN_POINTS = 3
 	}
 }

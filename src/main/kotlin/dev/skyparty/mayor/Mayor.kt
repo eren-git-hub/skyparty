@@ -213,12 +213,18 @@ class MayorScreen : GameScreen("Mayor") {
 		}
 	}
 
+	/** Drops symbols the Minecraft font cannot draw (Hypixel uses private glyphs; they show as boxes). */
+	private fun clean(s: String) = s.filter { c ->
+		val b = Character.UnicodeBlock.of(c)
+		b != Character.UnicodeBlock.PRIVATE_USE_AREA && b != Character.UnicodeBlock.SUPPLEMENTAL_PUNCTUATION
+	}
+
 	/** One perk: name in the mayor's color, description wrapped below. Returns the next y. */
 	private fun perk(g: GuiGraphicsExtractor, p: Mayor.Perk, x: Int, y: Int, w: Int, color: Int, bottom: Int): Int {
 		if (y + 10 > bottom) return y
 		g.text(font, "§l" + p.name, x, y, color, false)
 		var ty = y + 10
-		for (line in font.split(Component.literal("§7" + p.description), w - 6)) {
+		for (line in font.split(Component.literal("§7" + clean(p.description)), w - 6)) {
 			if (ty + 9 > bottom) return ty
 			g.text(font, line, x + 4, ty, Theme.TEXT, false)
 			ty += 9

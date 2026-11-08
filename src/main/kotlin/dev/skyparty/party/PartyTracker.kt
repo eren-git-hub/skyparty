@@ -14,8 +14,8 @@ import org.slf4j.LoggerFactory
  * CONTRACT: [members] includes yourself when in a party; empty when not in a party.
  * [roomId] is stable for the same set of members (order-independent), null when not in a party.
  *
- * Purely passive: it only reads chat. It never sends /pl by itself; `/sp party refresh` does that
- * when the player runs it (see [PartySuite]). Patterns live in [PartyPatterns].
+ * Mostly passive: it reads chat. [autoCheck] sends one quiet /pl when you join Hypixel and when you open the
+ * games menu or the wheel (at most every 2 minutes); its output is hidden. Patterns live in [PartyPatterns].
  */
 object PartyTracker {
 	private val log = LoggerFactory.getLogger("Skyparty/Party")
@@ -56,12 +56,25 @@ object PartyTracker {
 	fun init() {
 		if (initialized) return
 		initialized = true
+		// Our own quiet /pl: parse its lines here and keep them out of chat.
+		ClientReceiveMessageEvents.ALLOW_GAME.register { message, overlay ->
+			if (overlay || System.currentTimeMillis() > hideUntil) return@register true
+			val text = Chat.strip(message.string)
+			if (!text.lines().all { isListLine(it.trim()) }) return@register true
+			onChat(text)
+			false
+		}
 		ClientReceiveMessageEvents.GAME.register { message, overlay ->
 			if (!overlay) onChat(Chat.strip(message.string))
 		}
+		ClientPlayConnectionEvents.JOIN.register { _, _, _ -> joinCheckAt = System.currentTimeMillis() + 4_000 }
 		ClientTickEvents.END_CLIENT_TICK.register {
 			val p = pending
 			if (p != null && System.currentTimeMillis() - p.startedAt > 1500) commitPending()
+			if (joinCheckAt != 0L && System.currentTimeMillis() >= joinCheckAt) {
+				joinCheckAt = 0L
+				autoCheck(force = true)
+			}
 		}
 		ClientPlayConnectionEvents.DISCONNECT.register { _, _ -> set(emptyList(), null, "disconnect") }
 	}
@@ -70,6 +83,27 @@ object PartyTracker {
 	fun onChat(raw: String) {
 		for (line in raw.split('\n')) handleLine(line.trim())
 	}
+
+	private var lastAuto = 0L
+	private var hideUntil = 0L
+	private var joinCheckAt = 0L
+
+	/**
+	 * Asks Hypixel for the party list once (quietly) so rooms know your party without you typing /pl.
+	 * Only on Hypixel, only while the "Party Detection" setting is on, at most every 2 minutes.
+	 */
+	fun autoCheck(force: Boolean = false) {
+		val mc = Minecraft.getInstance()
+		if (mc.player == null || !dev.skyparty.util.Location.onHypixel || !dev.skyparty.module.impl.party.DecisionWheel.autoParty.value) return
+		val now = System.currentTimeMillis()
+		if (!force && now - lastAuto < 120_000) return
+		lastAuto = now
+		hideUntil = now + 3_000
+		Chat.command("pl")
+	}
+
+	private fun isListLine(l: String) = l.isEmpty() || P.SEPARATOR.matches(l) || P.LIST_HEADER.matches(l) || P.LIST_LEADER.matches(l) ||
+		P.LIST_MODS.matches(l) || P.LIST_MEMBERS.matches(l) || P.NOT_IN_PARTY.matches(l)
 
 	private fun handleLine(line: String) {
 		if (line.isEmpty()) return

@@ -28,12 +28,15 @@ object PriceGuess : Minigame {
 	override val minPlayers = 1
 	override val maxPlayers = 8
 	override val realtime = false
+	override val length = dev.skyparty.minigames.GameLength.SHORT
 
 	override fun open(room: Net.Room?) = MinigameHub.openScreen(PriceScreen(LobbyRoom.of(room, id)))
 }
 
-class PriceScreen(val room: LobbyRoom) : GameScreen("Price Guess") {
+class PriceScreen(val room: LobbyRoom) : GameScreen("Price Guess", room) {
 	enum class Phase { WAITING, GUESS, REVEAL, OVER }
+
+	override fun inProgress() = phase != Phase.OVER
 
 	private var phase = Phase.WAITING
 	private var seed = 0L
@@ -109,7 +112,7 @@ class PriceScreen(val room: LobbyRoom) : GameScreen("Price Guess") {
 		val r = right ?: return
 		if (phase != Phase.GUESS) return
 		lastCorrect = (r.price > l.price) == higher
-		revealAt = System.currentTimeMillis()
+		revealAt = room.now()
 		phase = Phase.REVEAL
 		val sound = if (lastCorrect) SoundEvents.EXPERIENCE_ORB_PICKUP else SoundEvents.VILLAGER_NO
 		Minecraft.getInstance().soundManager.play(SimpleSoundInstance.forUI(sound, if (lastCorrect) 1.4f else 1f))
@@ -137,7 +140,7 @@ class PriceScreen(val room: LobbyRoom) : GameScreen("Price Guess") {
 		val cx = width / 2
 
 		if (phase == Phase.WAITING) tryDeal()
-		if (phase == Phase.REVEAL && System.currentTimeMillis() - revealAt > revealMs + 500) afterReveal()
+		if (phase == Phase.REVEAL && room.now() - revealAt > revealMs + 500) afterReveal()
 
 		val products = sortedProducts()
 		if (products == null) {
@@ -180,7 +183,7 @@ class PriceScreen(val room: LobbyRoom) : GameScreen("Price Guess") {
 	private fun drawLoading(g: GuiGraphicsExtractor, cx: Int, top: Int, mx: Int, my: Int) {
 		val err = Bazaar.error
 		if (err == null) {
-			val dots = ".".repeat(((System.currentTimeMillis() / 300) % 4).toInt())
+			val dots = ".".repeat(((room.now() / 300) % 4).toInt())
 			centered(g, "Fetching Bazaar prices$dots", cx, top + 60, Theme.TEXT)
 		} else {
 			centered(g, "§c$err", cx, top + 50, Theme.TEXT)
@@ -214,11 +217,11 @@ class PriceScreen(val room: LobbyRoom) : GameScreen("Price Guess") {
 			centered(g, p.name.take(1), iconX + 24, iconY + 20, Theme.TEXT)
 		}
 
-		val name = font.plainSubstrByWidth(p.name, w - 8)
+		val name = fit(p.name, w - 8)
 		centered(g, name, x + w / 2, y + 66, Theme.TEXT)
 		val priceText = if (showPrice) {
 			val shown = if (highlight != 0) {
-				val t = ((System.currentTimeMillis() - revealAt).toDouble() / revealMs).coerceIn(0.0, 1.0)
+				val t = ((room.now() - revealAt).toDouble() / revealMs).coerceIn(0.0, 1.0)
 				p.price * (1 - (1 - t) * (1 - t))
 			} else p.price
 			"§6${formatCoins(shown)} coins"
@@ -244,11 +247,18 @@ class PriceScreen(val room: LobbyRoom) : GameScreen("Price Guess") {
 		} else {
 			centered(g, "§7Waiting for the host to start again…", cx, y + 30, Theme.TEXT)
 		}
-		button(g, cx + 8, y + 24, 96, 18, "Leave", mx, my, color = GameColors.RED) { onClose() }
+		button(g, cx + 8, y + 24, 96, 18, "Leave", mx, my, color = GameColors.RED) { room.quit(); onClose() }
 	}
 
 	private fun drawScores(g: GuiGraphicsExtractor, mx: Int, my: Int) {
 		val x = width - 110
+		if (x < width / 2 + 12 + 130 + 6) {
+			// No room beside the cards: one line along the bottom instead.
+			val line = room.names.entries.sortedByDescending { scores[it.key] ?: -1 }
+				.joinToString("  ") { (id, name) -> "§f$name §6${scores[id]?.toString() ?: "§8…"}" }
+			centered(g, fit("§7Scores: $line", width - 16), width / 2, height - 12, Theme.TEXT)
+			return
+		}
 		val y = 30
 		panel(g, x, y, 102, 16 + room.members.size * 11, "Scores")
 		room.names.entries.sortedByDescending { scores[it.key] ?: -1 }.forEachIndexed { i, (id, name) ->

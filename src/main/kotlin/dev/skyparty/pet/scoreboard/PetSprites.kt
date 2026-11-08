@@ -49,6 +49,91 @@ object PetSprites {
 
 	val adult = StageSprites(listOf(adult(WING_UP, LEGS_A), adult(WING_DOWN, LEGS_B)))
 
+	// ---- other species (same color letters)
+
+	private val AXO_TOP = listOf(
+		"...........A.A..",
+		"..........AKKKKK",
+		"KK.......AKBBBBK",
+		"KBK.......KBBEBK",
+		".KBKKKKKKBBBBBBK",
+		"..KBBBBBBBBSSSK.",
+		"...KSSSSSSSSSK..",
+	)
+	val axolotl = StageSprites(listOf(
+		Sprite(AXO_TOP + listOf("...KSK...KSK....", "...KK....KK.....")),
+		Sprite(AXO_TOP + listOf("....KSK.KSK.....", "....KK..KK......")),
+	))
+
+	private val GHOST_TOP = listOf(
+		"....KKKK....",
+		"..KKBBBBKK..",
+		".KBBBBBBBBK.",
+		".KBBBBBBBBK.",
+		"KBBEEBBEEBBK",
+		"KBBEEBBEEBBK",
+		"KBBBBBBBBBBK",
+		"KBBBBKKBBBBK",
+		"KSBBBBBBBBSK",
+		"KSBBBBBBBBSK",
+	)
+	// Wavy hem: the three bumps shift between the frames.
+	val ghost = StageSprites(listOf(
+		Sprite(GHOST_TOP + listOf("KBBBKBBBKBBK", ".KKK.KKK.KK.")),
+		Sprite(GHOST_TOP + listOf("KBBKBBBKBBBK", ".KK.KKK.KKK.")),
+	))
+
+	private val PENGUIN_TOP = listOf(
+		"...KKKK...",
+		"..KBBBBK..",
+		"..KBWWEK..",
+		"..KBWWWKAA",
+		".KBBWWWK..",
+		"KSBWWWWBK.",
+		"KSBWWWWBK.",
+		".KBWWWWBK.",
+		".KBBWWBBK.",
+		"..KKKKKK..",
+	)
+	val penguin = StageSprites(listOf(
+		Sprite(PENGUIN_TOP + "..AA..AA.."),
+		Sprite(PENGUIN_TOP + ".AA....AA."),
+	))
+
+	val ryu = StageSprites(listOf(
+		Sprite(listOf(
+			"...............W.W..",
+			"..............KWKWK.",
+			".......A.A...KBBBBK.",
+			"......KKKKK.KBBBEBBK",
+			"..A..KBBBBBKBBBBBBBA",
+			".KAKKBSSSSBBBBSKKKK.",
+			"KBBBBSK..KSSSSK.....",
+			".KSSK.....KKKK......",
+			"..KK................",
+		)),
+		Sprite(listOf(
+			"...............W.W..",
+			"..............KWKWK.",
+			"........A.A..KBBBBK.",
+			".......KKKKKKBBBEBBK",
+			"..A...KBBBBBBBBBBBBA",
+			".KAK.KBSSSSSBBSKKKK.",
+			"KBBBKBSK..KSSSK.....",
+			".KSSSK....KKK.......",
+			"..KKK...............",
+		)),
+	))
+
+	/** Sprites for [species]. */
+	fun of(species: dev.skyparty.pet.PetSpecies): StageSprites = when (species) {
+		dev.skyparty.pet.PetSpecies.DRAGON -> adult
+		dev.skyparty.pet.PetSpecies.RYU -> ryu
+		dev.skyparty.pet.PetSpecies.AXOLOTL -> axolotl
+		dev.skyparty.pet.PetSpecies.GHOST -> ghost
+		dev.skyparty.pet.PetSpecies.PENGUIN -> penguin
+	}
+
 	/** Food for the feed key: a little drumstick (5x5). */
 	val FOOD = Sprite(listOf("...WW", "..MWW", ".MMM.", "MMMm.", ".mm.."))
 

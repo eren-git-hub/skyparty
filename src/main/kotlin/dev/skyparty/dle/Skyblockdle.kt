@@ -215,15 +215,15 @@ class DleScreen : GameScreen("Skyblockdle") {
 		Minecraft.getInstance().soundManager.play(SimpleSoundInstance.forUI(sound, 1f))
 	}
 
-	override fun keyPressed(event: KeyEvent): Boolean {
+	override fun onKey(event: KeyEvent): Boolean {
 		when (event.key()) {
 			GLFW.GLFW_KEY_BACKSPACE -> { backspace(); return true }
 			GLFW.GLFW_KEY_ENTER, GLFW.GLFW_KEY_KP_ENTER -> { enter(); return true }
 		}
-		return super.keyPressed(event)
+		return super.onKey(event)
 	}
 
-	override fun charTyped(event: CharacterEvent): Boolean {
+	override fun onChar(event: CharacterEvent): Boolean {
 		val s = event.codepointAsString().uppercase()
 		if (s.length == 1 && s[0] in 'A'..'Z') { type(s[0]); return true }
 		return false

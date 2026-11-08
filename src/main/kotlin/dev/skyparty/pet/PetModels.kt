@@ -22,16 +22,62 @@ class PetPart(val name: String, val role: ColorRole, val follow: List<String> = 
  * Every pet in the world needs its own instance ([PetModels.create]): submitted parts are drawn later
  * in the frame, so sharing one instance would give every pet the last pet's pose.
  */
-class PetModel(val root: ModelPart, val parts: List<PetPart>, val scale: Float) {
+class PetModel(val root: ModelPart, val parts: List<PetPart>, val scale: Float, val species: PetSpecies = PetSpecies.DRAGON) {
+	/** Extra roll (radians) of the whole pet, e.g. the penguin's waddle; set by the animation. */
+	var roll = 0f
+	/** Extra height (blocks) above the follower position, e.g. floating pets; set by the animation. */
+	var hover = 0.0
+
+	private var lastTime = Float.NaN
+	private var dt = 0f
+	private val phases = FloatArray(4)
+	private var lastYaw = Float.NaN
+
+	/** Smoothed turning speed (radians per tick, + = turning left in model space); body parts can lag behind with it. */
+	var turn = 0f
+		private set
+
+	/** Call once per frame before animating: remembers how much time passed and how fast the pet turns. */
+	fun beginFrame(time: Float, yawDegrees: Float) {
+		dt = if (lastTime.isNaN()) 0f else (time - lastTime).coerceIn(0f, 5f)
+		lastTime = time
+		if (!lastYaw.isNaN() && dt > 0f) {
+			var d = yawDegrees - lastYaw
+			while (d > 180f) d -= 360f
+			while (d < -180f) d += 360f
+			val rate = Math.toRadians(d.toDouble()).toFloat() / dt
+			turn += (rate - turn) * (dt * 0.15f).coerceAtMost(1f)
+		}
+		lastYaw = yawDegrees
+	}
+
+	/**
+	 * Oscillator [i] advanced by this frame at [freq] (radians per tick). Unlike sin(time * freq) it never jumps
+	 * when the frequency changes (e.g. when the pet speeds up), so waves stay smooth. Call once per frame each.
+	 */
+	private val eased = FloatArray(4)
+
+	/** Value [i] eased toward [target] (a share of [perTick] per tick), so jittery inputs like speed move smoothly. */
+	fun ease(i: Int, target: Float, perTick: Float = 0.12f): Float {
+		eased[i] += (target - eased[i]) * (dt * perTick).coerceAtMost(1f)
+		return eased[i]
+	}
+
+	fun osc(i: Int, freq: Float): Float {
+		phases[i] = (phases[i] + dt * freq) % (Math.PI.toFloat() * 2000f)
+		return phases[i]
+	}
 	fun part(name: String): ModelPart? = if (root.hasChild(name)) root.getChild(name) else null
 
 	/** Resets every part to its rest pose before animating. */
 	fun reset() {
 		for (p in parts) part(p.name)?.resetPose()
-		part("tail")?.let { t ->
+		part("tail")?.takeIf { it.hasChild("tail2") }?.let { t ->
 			t.getChild("tail2").resetPose()
 			t.getChild("tail2").getChild("tail3").resetPose()
 		}
+		roll = 0f
+		hover = 0.0
 	}
 }
 
@@ -39,14 +85,20 @@ class PetModel(val root: ModelPart, val parts: List<PetPart>, val scale: Float) 
 object PetModels {
 	const val SCALE = 0.85f
 
-	fun create(): PetModel {
+	fun create(species: PetSpecies = PetSpecies.DRAGON): PetModel {
 		val mesh = MeshDefinition()
 		val b = Builder(mesh.root)
-		b.define()
-		return PetModel(LayerDefinition.create(mesh, 16, 16).bakeRoot(), b.parts, SCALE)
+		when (species) {
+			PetSpecies.DRAGON -> b.define()
+			PetSpecies.RYU -> b.defineRyu()
+			PetSpecies.AXOLOTL -> b.defineAxolotl()
+			PetSpecies.GHOST -> b.defineGhost()
+			PetSpecies.PENGUIN -> b.definePenguin()
+		}
+		return PetModel(LayerDefinition.create(mesh, 16, 16).bakeRoot(), b.parts, species.scale, species)
 	}
 
-	private class Builder(val root: PartDefinition) {
+	internal class Builder(val root: PartDefinition) {
 		val parts = mutableListOf<PetPart>()
 
 		fun part(
@@ -63,7 +115,7 @@ object PetModels {
 		}
 	}
 
-	private fun CubeListBuilder.box(x: Float, y: Float, z: Float, w: Float, h: Float, d: Float) {
+	internal fun CubeListBuilder.box(x: Float, y: Float, z: Float, w: Float, h: Float, d: Float) {
 		addBox(x, y, z, w, h, d)
 	}
 

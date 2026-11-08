@@ -19,7 +19,7 @@ object OnlineModule : Module(
 ) {
 	const val DEFAULT_URL = "https://skyparty-api.riqer123.workers.dev"
 
-	val serverUrl = text("Server URL", DEFAULT_URL, maxLength = 96, description = "Address of the Skyparty server")
+	val serverUrl = text("Server URL", DEFAULT_URL, maxLength = 96, description = "Address of the Skyparty server").also { it.visibleIf = { false } }
 
 	override fun onTick() {
 		BackendTransport.update(true, serverUrl.value.ifBlank { DEFAULT_URL })

@@ -41,6 +41,7 @@ object BazaarBluff : Minigame {
 	override val minPlayers = 1
 	override val maxPlayers = 8
 	override val realtime = false
+	override val length = dev.skyparty.minigames.GameLength.SHORT
 
 	const val ROUNDS = 5
 	const val GUESS_MS = 25_000L
@@ -52,8 +53,10 @@ object BazaarBluff : Minigame {
 	override fun open(room: Net.Room?) = MinigameHub.openScreen(BluffScreen(LobbyRoom.of(room, id)))
 }
 
-class BluffScreen(val room: LobbyRoom) : GameScreen("Bazaar Bluff") {
+class BluffScreen(val room: LobbyRoom) : GameScreen("Bazaar Bluff", room) {
 	enum class Phase { WAITING, GUESS, REVEAL, OVER }
+
+	override fun inProgress() = phase != Phase.OVER
 
 	private var phase = Phase.WAITING
 	private var phaseStart = 0L
@@ -69,6 +72,9 @@ class BluffScreen(val room: LobbyRoom) : GameScreen("Bazaar Bluff") {
 	private var input = ""
 	private var error: String? = null
 	private var rewarded = false
+	private val rounds = BazaarBluff.ROUNDS
+	/** Bumped by "Play again" so the host announces each round of a new match once. */
+	private var match = 0
 
 	init {
 		Bazaar.ensureLoaded()
@@ -79,7 +85,7 @@ class BluffScreen(val room: LobbyRoom) : GameScreen("Bazaar Bluff") {
 		}
 	}
 
-	private fun now() = System.currentTimeMillis()
+	private fun now() = room.now()
 	private val me get() = Net.selfId
 	private val hostLike get() = room.solo || room.isHost
 
@@ -126,7 +132,7 @@ class BluffScreen(val room: LobbyRoom) : GameScreen("Bazaar Bluff") {
 		guesses[from] = v
 		if (from != me) play(SoundEvents.NOTE_BLOCK_HAT.value(), 1.4f)
 		if (guesses.size >= names.size && hostLike) {
-			if (room.solo) reveal() else room.send("bluff.reveal", JsonObject().apply { addProperty("r", round) })
+			if (room.solo) reveal() else once("m$match v$round") { room.send("bluff.reveal", JsonObject().apply { addProperty("r", round) }) }
 		}
 	}
 
@@ -178,7 +184,7 @@ class BluffScreen(val room: LobbyRoom) : GameScreen("Bazaar Bluff") {
 	private fun update() {
 		val t = now() - phaseStart
 		when (phase) {
-			Phase.WAITING -> if (hostLike && Bazaar.products != null) startRound(0)
+			Phase.WAITING -> if (hostLike && round < 0 && Bazaar.products != null) once("m$match r0") { startRound(0) }
 			Phase.GUESS -> {
 				val price = item?.price ?: return
 				for ((b, at) in botGuessAt.toMap()) if (now() >= at) {
@@ -188,12 +194,12 @@ class BluffScreen(val room: LobbyRoom) : GameScreen("Bazaar Bluff") {
 					addGuess(b, price * factor)
 				}
 				if (phase == Phase.GUESS && hostLike && t >= BazaarBluff.GUESS_MS) {
-					if (room.solo) reveal() else room.send("bluff.reveal", JsonObject().apply { addProperty("r", round) })
+					if (room.solo) reveal() else once("m$match v$round") { room.send("bluff.reveal", JsonObject().apply { addProperty("r", round) }) }
 				}
 			}
 			Phase.REVEAL -> if (t >= BazaarBluff.REVEAL_MS) {
-				if (round + 1 >= BazaarBluff.ROUNDS) finish()
-				else if (hostLike) { enter(Phase.WAITING); startRound(round + 1) }
+				if (round + 1 >= rounds) finish()
+				else if (hostLike) once("m$match r${round + 1}") { startRound(round + 1) }
 			}
 			else -> {}
 		}
@@ -201,15 +207,15 @@ class BluffScreen(val room: LobbyRoom) : GameScreen("Bazaar Bluff") {
 
 	// ------------------------------------------------------------------ input
 
-	override fun keyPressed(event: KeyEvent): Boolean {
+	override fun onKey(event: KeyEvent): Boolean {
 		if (phase == Phase.GUESS) when (event.key()) {
 			GLFW.GLFW_KEY_BACKSPACE -> { input = input.dropLast(1); return true }
 			GLFW.GLFW_KEY_ENTER, GLFW.GLFW_KEY_KP_ENTER -> { submit(); return true }
 		}
-		return super.keyPressed(event)
+		return super.onKey(event)
 	}
 
-	override fun charTyped(event: CharacterEvent): Boolean {
+	override fun onChar(event: CharacterEvent): Boolean {
 		if (phase != Phase.GUESS || me in guesses) return false
 		val s = event.codepointAsString()
 		if (s.length == 1 && (s[0].isDigit() || s[0] in ".,kKmMbB") && input.length < 12) input += s.lowercase()
@@ -235,7 +241,7 @@ class BluffScreen(val room: LobbyRoom) : GameScreen("Bazaar Bluff") {
 		val cw = 180
 		val cy = top + 8
 		panel(g, cx - cw / 2, cy, cw, 74)
-		centered(g, "§7Round ${round + 1}/${BazaarBluff.ROUNDS}", cx, cy + 5, Theme.TEXT)
+		centered(g, "§7Round ${round + 1}/${rounds}", cx, cy + 5, Theme.TEXT)
 		val icon = Bazaar.icon(p.id)
 		if (!icon.isEmpty) {
 			val pose = g.pose()
@@ -302,9 +308,9 @@ class BluffScreen(val room: LobbyRoom) : GameScreen("Bazaar Bluff") {
 		val winners = scores.filterValues { it == best }.keys.map { names[it] ?: "?" }
 		centered(g, "§6§l${winners.joinToString(" & ")} ${if (winners.size == 1) "wins" else "win"} with $best points!", cx, y, Theme.TEXT)
 		if (hostLike) {
-			button(g, cx - 100, y + 14, 92, 16, "Play again", mx, my, color = GameColors.GREEN) { round = -1; enter(Phase.WAITING) }
+			button(g, cx - 100, y + 14, 92, 16, "Play again", mx, my, color = GameColors.GREEN) { match++; round = -1; enter(Phase.WAITING) }
 		} else centered(g, "§7Waiting for the host…", cx, y + 18, Theme.TEXT)
-		button(g, cx + 8, y + 14, 92, 16, "Leave", mx, my, color = GameColors.RED) { onClose() }
+		button(g, cx + 8, y + 14, 92, 16, "Leave", mx, my, color = GameColors.RED) { room.quit(); onClose() }
 	}
 
 	private fun drawScores(g: GuiGraphicsExtractor) {

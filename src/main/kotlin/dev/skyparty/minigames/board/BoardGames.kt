@@ -143,7 +143,7 @@ abstract class GridGame(
 	val winTokens: Int,
 ) : Minigame {
 	override val minPlayers = 1
-	override val maxPlayers = 8
+	override val maxPlayers = 2
 	override val realtime = false
 
 	override fun open(room: Net.Room?) = MinigameHub.openScreen(GridScreen(this, LobbyRoom.of(room, id)))
@@ -152,12 +152,16 @@ abstract class GridGame(
 object ConnectFour : GridGame(
 	"connect4", "Connect Four", "Drop discs and connect four in a row. Play the AI or a party member.",
 	GridRules(7, 6, 4, gravity = true), aiDepth = 6, aiBlunder = 8, winTokens = 6,
-)
+) {
+	override val length = dev.skyparty.minigames.GameLength.MEDIUM
+}
 
 object TicTacToe : GridGame(
 	"tictactoe", "Tic-Tac-Toe", "The classic 3x3. Quick rounds against the AI or a party member.",
 	GridRules(3, 3, 3, gravity = false), aiDepth = 9, aiBlunder = 25, winTokens = 3,
-)
+) {
+	override val length = dev.skyparty.minigames.GameLength.SHORT
+}
 
 /**
  * Shared screen. Online protocol (echoed to the sender, applied on receipt):
@@ -165,7 +169,7 @@ object TicTacToe : GridGame(
  *  - "<id>.move" {cell}       only accepted from the player whose turn it is
  * Solo: you vs the AI, starting player alternates each round.
  */
-class GridScreen(val game: GridGame, val room: LobbyRoom) : GameScreen(game.name) {
+class GridScreen(val game: GridGame, val room: LobbyRoom) : GameScreen(game.name, room) {
 	private val rules = game.rules
 	private var board = IntArray(rules.size)
 	private var turn = 1
@@ -177,13 +181,14 @@ class GridScreen(val game: GridGame, val room: LobbyRoom) : GameScreen(game.name
 	private var rewarded = false
 	private var aiThinkUntil = 0L
 	private var soloRound = 0
-	private val rng = Random(System.nanoTime())
+	private val rng = Random(room.nanos())
 
 	/** Player ids for piece 1 and 2 (solo: you and the AI = null). */
 	private var p1: UUID? = null
 	private var p2: UUID? = null
 
 	private val score = IntArray(3)
+	override fun inProgress() = started && winner == 0
 
 	init {
 		room.onMessage = ::onMessage
@@ -227,7 +232,7 @@ class GridScreen(val game: GridGame, val room: LobbyRoom) : GameScreen(game.name
 		if (soloRound % 2 == 0) { p1 = Net.selfId; p2 = null } else { p1 = null; p2 = Net.selfId }
 		soloRound++
 		reset()
-		if (aiPiece == 1) aiThinkUntil = System.currentTimeMillis() + 500
+		if (aiPiece == 1) aiThinkUntil = room.now() + 500
 	}
 
 	private fun reset() {
@@ -253,7 +258,7 @@ class GridScreen(val game: GridGame, val room: LobbyRoom) : GameScreen(game.name
 		if (t < 0 || winner != 0) return
 		board[t] = turn
 		lastMove = t
-		lastMoveAt = System.currentTimeMillis()
+		lastMoveAt = room.now()
 		Minecraft.getInstance().soundManager.play(SimpleSoundInstance.forUI(SoundEvents.WOOD_PLACE, if (turn == 1) 1.2f else 0.9f))
 		val line = rules.winLine(board, t)
 		when {
@@ -261,7 +266,7 @@ class GridScreen(val game: GridGame, val room: LobbyRoom) : GameScreen(game.name
 			rules.full(board) -> { winner = 3; onGameOver() }
 			else -> {
 				turn = 3 - turn
-				if (turn == aiPiece) aiThinkUntil = System.currentTimeMillis() + 450 + rng.nextLong(400)
+				if (turn == aiPiece) aiThinkUntil = room.now() + 450 + rng.nextLong(400)
 			}
 		}
 	}
@@ -278,7 +283,7 @@ class GridScreen(val game: GridGame, val room: LobbyRoom) : GameScreen(game.name
 	}
 
 	private fun tickAi() {
-		if (!room.solo || winner != 0 || turn != aiPiece || System.currentTimeMillis() < aiThinkUntil) return
+		if (!room.solo || winner != 0 || turn != aiPiece || room.now() < aiThinkUntil) return
 		val m = GridAI.bestMove(rules, board.copyOf(), aiPiece, game.aiDepth, game.aiBlunder, rng)
 		if (m >= 0) apply(m)
 	}
@@ -346,7 +351,7 @@ class GridScreen(val game: GridGame, val room: LobbyRoom) : GameScreen(game.name
 		g.fill(bx - 4 + 3, by - 4 + 3, bx + w + 4 + 3, by + h + 4 + 3, Theme.SHADOW)
 		g.fill(bx - 4, by - 4, bx + w + 4, by + h + 4, 0xFF5A2E9C.toInt())
 		g.outline(bx - 4, by - 4, w + 8, h + 8, Theme.rainbow(0f, 0.5f))
-		val now = System.currentTimeMillis()
+		val now = room.now()
 		for (i in 0 until rules.size) {
 			val cx = bx + (i % rules.cols) * cell + cell / 2
 			val cy = by + (i / rules.cols) * cell + cell / 2
@@ -379,7 +384,7 @@ class GridScreen(val game: GridGame, val room: LobbyRoom) : GameScreen(game.name
 			if (i == hover && board[i] == 0) g.fill(x + 2, y + 2, x + cell - 2, y + cell - 2, 0x22FFFFFF)
 			if (i in winLine) g.fill(x + 2, y + 2, x + cell - 2, y + cell - 2,
 				ColorUtil.withAlpha(tttColors[winner.coerceIn(1, 2)], (0x40 + 0x30 * sin(Theme.time * 8)).toInt()))
-			val pop = if (i == lastMove) ((System.currentTimeMillis() - lastMoveAt) / 180f).coerceIn(0f, 1f) else 1f
+			val pop = if (i == lastMove) ((room.now() - lastMoveAt) / 180f).coerceIn(0f, 1f) else 1f
 			val size = ((cell - 16) * (0.4f + 0.6f * pop)).toInt()
 			when (board[i]) {
 				1 -> drawX(g, x + cell / 2, y + cell / 2, size, tttColors[1])
@@ -412,7 +417,7 @@ class GridScreen(val game: GridGame, val room: LobbyRoom) : GameScreen(game.name
 			winner != 0 && winner == myPiece -> "§a§lYou win! ✦"
 			winner != 0 -> "§c${nameOfPiece(winner)} wins"
 			turn == myPiece -> "§fYour turn"
-			turn == aiPiece -> "§7AI is thinking" + ".".repeat(((System.currentTimeMillis() / 250) % 4).toInt())
+			turn == aiPiece -> "§7AI is thinking" + ".".repeat(((room.now() / 250) % 4).toInt())
 			else -> "§7${nameOfPiece(turn)}'s turn"
 		}
 		centered(g, status, x + w / 2, y + 62, Theme.TEXT)
@@ -424,7 +429,7 @@ class GridScreen(val game: GridGame, val room: LobbyRoom) : GameScreen(game.name
 				}
 			} else centered(g, "§7Waiting for the host…", x + w / 2, y + 92, Theme.TEXT)
 		}
-		button(g, x + 8, y + 110, w - 16, 16, "Leave", mx, my, color = GameColors.RED) { onClose() }
+		button(g, x + 8, y + 110, w - 16, 16, "Leave", mx, my, color = GameColors.RED) { room.quit(); onClose() }
 	}
 
 	private fun disc(g: GuiGraphicsExtractor, cx: Int, cy: Int, r: Int, color: Int) {

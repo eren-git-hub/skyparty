@@ -2,7 +2,6 @@ package dev.skyparty.module
 
 import dev.skyparty.setting.BooleanSetting
 import dev.skyparty.setting.ColorSetting
-import dev.skyparty.setting.KeybindSetting
 import dev.skyparty.setting.NumberSetting
 import dev.skyparty.setting.SelectorSetting
 import dev.skyparty.setting.Setting
@@ -16,7 +15,8 @@ enum class Category(val displayName: String, val icon: String, val color: Int) {
 }
 
 /**
- * A feature that can be toggled and configured in the Click-GUI.
+ * A feature with settings shown in the Skyparty menus. Features are always on; only the ones marked
+ * [switchable] (the pets) get an on/off switch in the menu.
  *
  * @param id stable key used in the config file; never change it once released.
  */
@@ -28,21 +28,18 @@ abstract class Module(
 	defaultEnabled: Boolean = false,
 	/** False for modules that are only a settings holder (e.g. the Click-GUI itself). */
 	val toggleable: Boolean = true,
+	/** Shows an on/off switch in the menu (and remembers the state). */
+	val switchable: Boolean = false,
 ) {
 	val settings = mutableListOf<Setting<*>>()
-	val keybind = KeybindSetting("Keybind", description = "Key to toggle this module")
-
-	var enabled: Boolean = defaultEnabled && toggleable
+	var enabled: Boolean = toggleable
 		private set
 
-	fun setEnabled(state: Boolean, notify: Boolean = true) {
+	fun setEnabled(state: Boolean, @Suppress("UNUSED_PARAMETER") notify: Boolean = false) {
 		if (!toggleable || state == enabled) return
 		enabled = state
 		if (state) onEnable() else onDisable()
-		if (notify) ModuleManager.onToggled(this)
 	}
-
-	fun toggle() = setEnabled(!enabled)
 
 	open fun onEnable() {}
 	open fun onDisable() {}
@@ -76,7 +73,4 @@ abstract class Module(
 
 	protected fun text(name: String, default: String, maxLength: Int = 32, description: String = "") =
 		register(StringSetting(name, default, maxLength, description))
-
-	protected fun key(name: String, description: String = "") =
-		register(KeybindSetting(name, description = description))
 }

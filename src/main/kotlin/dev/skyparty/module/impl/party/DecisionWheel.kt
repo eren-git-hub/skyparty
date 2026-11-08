@@ -10,7 +10,7 @@ object DecisionWheel : Module(
 	category = Category.PARTY,
 ) {
 	val autoParty = boolean("Party Detection", true, "Automatically join your party's room")
-	val onlyHostEdits = boolean("Host Edits Only", true, "When you host: only you can change the entries")
+	val onlyHostEdits = boolean("Host Edits Only", true, "When you host: only you can change the entries").also { it.visibleIf = { false } } // set in the wheel itself
 	val onlyHostSpins = boolean("Host Spins Only", false, "When you host: only you can spin")
 	val sendToParty = boolean("Send Result to Party", true, "Show a button that posts the result in party chat")
 	val sound = boolean("Sound", true)

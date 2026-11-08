@@ -22,15 +22,13 @@ import kotlin.math.cos
 import kotlin.math.sin
 
 /**
- * Exclusive cosmetic: red-black dragon wings on players whose name is in [OWNERS]. Purely client-side
+ * Exclusive cosmetic: red-black dragon wings on the players listed in cosmetics.json (see [CosmeticOwners]). Purely client-side
  * (only people with the mod see them), nothing is sent to any server.
  *
  * Model units are 1/16 block, Y up, facing +Z (same convention as the pet models). The right wing is
  * the left one turned 180° around Y, so it shows the mirrored back face of the texture.
  */
 object DragonWings {
-	private val OWNERS = setOf("exlusiv")
-
 	/** Extra names for tests only (the dev account is "Player0"). */
 	val testOwners = mutableSetOf<String>()
 
@@ -38,7 +36,7 @@ object DragonWings {
 	private val renderType by lazy { RenderTypes.entityTranslucent(TEXTURE) }
 
 
-	fun hasWings(player: Player) = player.gameProfile.name.lowercase().let { it in OWNERS || it in testOwners }
+	fun hasWings(player: Player) = player.gameProfile.name.lowercase().let { CosmeticOwners.has(CosmeticOwners.DRAGON_WINGS, it) || it in testOwners }
 
 	/**
 	 * The wing design as pixels (image space: x = outwards from the spine, y = down). Letters index the
