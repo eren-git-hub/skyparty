@@ -1,10 +1,10 @@
 {
-	"cat_ears": ["evocative", "mutsiri", "jijli", "limnophobia", "siasow"],
+	"cat_ears": ["evocative", "mutsiri", "jijli", "limnophobia"],
 	"dragon_wings": ["exlusiv"],
-	"horns": ["exlusiv"],
-	"bunny_ears": ["daichoo"],
+	"horns": [],
+	"bunny_ears": ["daichoo", "siasow"],
 	"ranks": {
-		"LARP": { "tag": "&b[LARP&1++&b]", "players": ["exlusiv"] }
+		"LARP": { "tag": "&b[LARP&1++&b]", "players": ["exlusiv"] },
 		"BUM": { "tag": "&6[Bum++]", "players": ["siasow"] }
 	}
 }
