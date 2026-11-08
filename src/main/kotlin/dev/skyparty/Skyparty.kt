@@ -68,6 +68,7 @@ object Skyparty : ClientModInitializer {
 		LevelRenderEvents.COLLECT_SUBMITS.register(PetRenderer::render)
 		LevelRenderEvents.COLLECT_SUBMITS.register(dev.skyparty.cosmetics.DragonWings::render)
 		LevelRenderEvents.COLLECT_SUBMITS.register(dev.skyparty.cosmetics.CatEars::render)
+		LevelRenderEvents.COLLECT_SUBMITS.register(dev.skyparty.cosmetics.HeadCosmetics::render)
 		HudElementRegistry.attachElementAfter(
 			VanillaHudElements.SCOREBOARD,
 			Identifier.fromNamespaceAndPath(MOD_ID, "scoreboard_pet"),

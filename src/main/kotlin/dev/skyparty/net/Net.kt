@@ -28,6 +28,8 @@ object Net {
 		/** Called on the client thread for every message (including your own echo). */
 		var onMessage: (Message) -> Unit
 		var onMembersChanged: (Set<UUID>) -> Unit
+		/** Member names where the transport knows them (the backend sends them; offline rooms don't). */
+		val memberNames: Map<UUID, String> get() = emptyMap()
 	}
 
 	interface Transport {

@@ -29,11 +29,16 @@ abstract class ModuleSettingsScreen(title: String) : GameScreen(title) {
 	private fun elementsOf(m: Module) = elements.getOrPut(m) { m.settings.map { SettingElement.of(it) } }
 
 	/** Draws [modules] as cards in a scrollable column at (x, y, w, h). */
-	protected fun drawModules(g: GuiGraphicsExtractor, modules: List<Module>, x: Int, y: Int, w: Int, h: Int, mx: Int, my: Int) {
+	protected fun drawModules(
+		g: GuiGraphicsExtractor, modules: List<Module>, x: Int, y: Int, w: Int, h: Int, mx: Int, my: Int,
+		/** Extra card drawn above the modules at (x, y, w); returns its height. */
+		header: ((Int, Int, Int) -> Int)? = null,
+	) {
 		area = intArrayOf(x, y, w, h)
 		visible.clear()
 		g.enableScissor(x, y, x + w, y + h)
 		var cy = y - scroll
+		if (header != null) cy += header(x, cy, w) + 6
 		for (m in modules) {
 			// Only settings that are shown; a feature with none (e.g. the connection) gets no card.
 			val els = elementsOf(m).filter { it.setting.visible() }
@@ -125,6 +130,27 @@ class SettingsScreen : ModuleSettingsScreen("Settings") {
 		// Interface (colors) first, then the features.
 		val modules = ModuleManager.modules.filter { it.category != Category.PETS }.sortedBy { it.category != Category.CLIENT }
 		val w = minOf(320, width - 40)
-		drawModules(g, modules, width / 2 - w / 2, top + 8, w, height - top - 16, mouseX, mouseY)
+		drawModules(g, modules, width / 2 - w / 2, top + 8, w, height - top - 16, mouseX, mouseY) { x, y, cw -> drawActiveUsers(g, x, y, cw) }
+	}
+
+	/** Not a setting, but the Settings tab is where it fits: everyone online with Skyparty right now. */
+	private fun drawActiveUsers(g: GuiGraphicsExtractor, x: Int, y: Int, w: Int): Int {
+		val names = dev.skyparty.net.ActiveUsers.names
+		val online = dev.skyparty.net.ActiveUsers.online
+		// Names in columns, as many as fit.
+		val colW = (names.maxOfOrNull { font.width(it) } ?: 40) + 12
+		val cols = ((w - 16) / colW).coerceAtLeast(1)
+		val rows = (names.size + cols - 1) / cols
+		val h = if (names.isEmpty()) 30 else 30 + rows * 10 + 6
+		g.fill(x, y, x + w, y + h, GameColors.CARD)
+		g.fill(x, y, x + 2, y + h, GameColors.GREEN)
+		g.text(font, bold("Active users"), x + 8, y + 5, Theme.TEXT, true)
+		val sub = if (online) "§7${names.size} online with Skyparty right now" else "§8Offline – connect to the Skyparty server to see who's on"
+		g.text(font, fit(sub, w - 16), x + 8, y + 17, Theme.TEXT, false)
+		for ((i, n) in names.withIndex()) {
+			val me = n.equals(dev.skyparty.net.Net.selfName, ignoreCase = true)
+			g.text(font, (if (me) "§a● §f" else "§a● §7") + n, x + 8 + (i % cols) * colW, y + 30 + (i / cols) * 10, Theme.TEXT, false)
+		}
+		return h
 	}
 }

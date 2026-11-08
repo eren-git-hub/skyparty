@@ -2,7 +2,7 @@
 	"required": true,
 	"package": "dev.skyparty.mixin",
 	"compatibilityLevel": "JAVA_25",
-	"client": ["HudSidebarMixin"],
+	"client": ["HudSidebarMixin", "RankTagMixins$Tab", "RankTagMixins$NameTag"],
 	"injectors": {
 		"defaultRequire": 1
 	}

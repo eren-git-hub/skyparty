@@ -335,6 +335,8 @@ object BackendTransport : Net.Transport {
 	private class RoomConnection(val id: String) {
 		val handles = CopyOnWriteArrayList<Handle>()
 		@Volatile var members: Set<UUID> = emptySet()
+		/** Names of the members, as the server reports them with every member list. */
+		@Volatile var memberNames: Map<UUID, String> = emptyMap()
 		@Volatile private var ws: WebSocket? = null
 		@Volatile private var connecting = false
 		private val queue = ConcurrentLinkedQueue<String>()
@@ -352,6 +354,7 @@ object BackendTransport : Net.Transport {
 				get() = this@RoomConnection.members.ifEmpty { setOf(Net.selfId) }
 			override var onMessage: (Net.Message) -> Unit = {}
 			override var onMembersChanged: (Set<UUID>) -> Unit = {}
+			override val memberNames: Map<UUID, String> get() = this@RoomConnection.memberNames
 
 			override fun send(type: String, payload: JsonObject) {
 				if (BackendTransport.state == State.OFF || BackendTransport.state == State.NOT_CONFIGURED) {
@@ -541,11 +544,13 @@ object BackendTransport : Net.Transport {
 			val type = obj.get("type")?.asString ?: return
 			val payload = obj.getAsJsonObject("payload") ?: JsonObject()
 			when (type) {
-				"room.members" -> applyMembers(
-					payload.getAsJsonArray("members")
-						?.mapNotNull { runCatching { UUID.fromString(it.asJsonObject.get("uuid").asString) }.getOrNull() }
-						?.toSet() ?: emptySet()
-				)
+				"room.members" -> {
+					val list = payload.getAsJsonArray("members")?.mapNotNull { el ->
+						runCatching { UUID.fromString(el.asJsonObject.get("uuid").asString) to (el.asJsonObject.get("name")?.asString ?: "") }.getOrNull()
+					} ?: emptyList()
+					memberNames = list.toMap()
+					applyMembers(list.map { it.first }.toSet())
+				}
 				"room.error" -> log.debug("Skyparty room {} error: {}", id, payload.get("code")?.asString)
 				else -> {
 					val from = runCatching { UUID.fromString(obj.get("from").asString) }.getOrNull() ?: return

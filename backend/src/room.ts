@@ -17,6 +17,8 @@ import { type Bucket, type Env, takeToken } from "./util";
  */
 
 export const MAX_MEMBERS = 16;
+/** "presence:*" rooms only list who is online (Active users); clients never send there, so they may be big. */
+export const PRESENCE_MAX_MEMBERS = 2000;
 export const MAX_MESSAGE_BYTES = 4096;
 const BUCKET_CAPACITY = 20; // burst
 const BUCKET_REFILL = 5; // messages per second sustained
@@ -36,6 +38,8 @@ interface Attachment {
 	strikes: number;
 	strikeAt: number;
 	last: number;
+	/** Room id ("party:…", "presence:all", …). */
+	room?: string;
 }
 
 export class Room extends DurableObject<Env> {
@@ -50,11 +54,13 @@ export class Room extends DurableObject<Env> {
 		const uuid = req.headers.get("X-Sl-Uuid")!;
 		const name = req.headers.get("X-Sl-Name")!;
 		const ip = req.headers.get("X-Sl-Ip") ?? "local";
+		const room = decodeURIComponent(new URL(req.url).pathname.slice(1));
+		const presence = room.startsWith("presence:");
 		const now = Date.now();
 
 		const { 0: client, 1: server } = new WebSocketPair();
 		this.ctx.acceptWebSocket(server);
-		const att: Attachment = { uuid, name, ip, bucket: { tokens: BUCKET_CAPACITY, at: now }, strikes: 0, strikeAt: now, last: now };
+		const att: Attachment = { uuid, name, ip, bucket: { tokens: BUCKET_CAPACITY, at: now }, strikes: 0, strikeAt: now, last: now, room };
 		server.serializeAttachment(att);
 
 		if (this.bannedUntil(uuid) > now) {
@@ -71,7 +77,7 @@ export class Room extends DurableObject<Env> {
 				ws.close(4000, "replaced");
 			}
 		}
-		if (this.open().length > MAX_MEMBERS) {
+		if (this.open().length > (presence ? PRESENCE_MAX_MEMBERS : MAX_MEMBERS)) {
 			this.sendError(server, "room_full");
 			server.close(4009, "room full");
 			return new Response(null, { status: 101, webSocket: client });
@@ -105,6 +111,8 @@ export class Room extends DurableObject<Env> {
 			this.sendError(ws, "bad_json");
 			return this.strike(ws, a, 1);
 		}
+		// Presence rooms are a member list only: nothing is relayed there.
+		if (a.room?.startsWith("presence:")) return;
 		const type = msg?.type;
 		if (typeof type !== "string" || !TYPE_RE.test(type) || type.startsWith("room.")) {
 			this.sendError(ws, "bad_type");
