@@ -1,7 +1,7 @@
 {
 	"cat_ears": ["evocative", "mutsiri", "jijli", "limnophobia", "siasow"],
 	"dragon_wings": ["exlusiv"],
-	"horns": [],
+	"horns": ["exlusiv"],
 	"bunny_ears": [],
 	"ranks": {
 		"LARP": { "tag": "&b[LARP]", "players": ["exlusiv"] }
