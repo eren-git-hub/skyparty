@@ -4,6 +4,6 @@
 	"horns": ["exlusiv"],
 	"bunny_ears": [],
 	"ranks": {
-		"LARP": { "tag": "&b[LARP]", "players": ["exlusiv"] }
+		"LARP": { "tag": "&b[LARP&1++&b]", "players": ["exlusiv"] }
 	}
 }
