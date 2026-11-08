@@ -4,6 +4,7 @@ import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.mojang.brigadier.arguments.StringArgumentType
 import dev.skyparty.core.SkypartyCommands
+import dev.skyparty.core.Compat
 import dev.skyparty.minigames.petrace.PetRace
 import dev.skyparty.minigames.price.PriceGuess
 import dev.skyparty.minigames.reaction.ReactionDuel
@@ -44,7 +45,9 @@ import kotlin.random.Random
  *  - "lobby.leave" {sid}                  sender left the room; the host leaving closes it
  *  - "lobby.start" {sid, players:[…]}     host started; listed players open the game
  *  - "lobby.quit"  {sid}                  sender closed the running game
- *  - "lobby.hello" {}                     someone (re)joined the lobby; every host answers with "lobby.state"
+ *  - "lobby.hello" {pv, v}                someone (re)joined the lobby; every host answers with "lobby.state",
+ *                                         everyone answers with "lobby.ver"
+ *  - "lobby.ver"   {pv, v}                sender's room protocol and mod version (see [dev.skyparty.core.Compat])
  *  - "lobby.state" {sid, game, joined:[…], ready:[ids], playing:[ids]}  full state of one room (from its host)
  */
 object MinigameHub {
@@ -73,6 +76,14 @@ object MinigameHub {
 	class Lobby(val room: Net.Room, val isCode: Boolean) {
 		val transport: Net.Transport = Net.transport
 		val sessions = linkedMapOf<String, Session>()
+		/** Room protocol and mod version per player (players that never said are 0.2.6 = protocol 1). */
+		val protocols = HashMap<UUID, Int>()
+		val versions = HashMap<UUID, String>()
+
+		fun protocolOf(id: UUID) = if (id == Net.selfId) Compat.PROTOCOL else protocols[id] ?: 1
+		/** Can play with you (same room protocol). */
+		fun compatible(id: UUID) = protocolOf(id) == Compat.PROTOCOL
+		fun versionOf(id: UUID) = if (id == Net.selfId) Compat.VERSION else versions[id] ?: "0.2.6"
 		var active: LobbyRoom? = null
 
 		val code: String? get() = if (isCode) room.id.removePrefix("code:") else null
@@ -182,7 +193,7 @@ object MinigameHub {
 			lobby.active?.let { a -> a.members.filter { it !in present }.forEach { a.removePlayer(it) } }
 		}
 		// Ask the hosts of rooms that already exist to describe them.
-		room.send("lobby.hello")
+		room.send("lobby.hello", versionJson())
 		return lobby
 	}
 
@@ -267,6 +278,10 @@ object MinigameHub {
 	fun join(lobby: Lobby, session: Session) {
 		if (session.selfIn) return
 		val game = session.game ?: return
+		if (!lobby.compatible(session.host)) {
+			Chat.info(versionHint(lobby, session.host, session.hostName))
+			return
+		}
 		if (session.joined.size >= game.maxPlayers) {
 			Chat.info("§c${session.hostName}'s ${game.name} room is full (${game.maxPlayers} players).")
 			return
@@ -327,6 +342,10 @@ object MinigameHub {
 	fun start(lobby: Lobby, session: Session) {
 		val game = session.game ?: return
 		if (!session.isHost || session.inGame) return
+		incompatibleReady(lobby, session).takeIf { it.isNotEmpty() }?.let { names ->
+			Chat.info("§c${names.joinToString()} ${if (names.size == 1) "has" else "have"} a different Skyparty version – everyone needs the same one to play together.")
+			return
+		}
 		if (!session.selfReady) {
 			Chat.info("§7Ready up first – the host plays too.")
 			return
@@ -355,7 +374,10 @@ object MinigameHub {
 				val session = Session(id, game.id, from, msg.fromName)
 				session.joined[from] = msg.fromName
 				lobby.sessions[id] = session
-				if (from != Net.selfId && lobby.mine == null) offerInvite(lobby, session, game)
+				if (from != Net.selfId && lobby.mine == null) {
+					if (lobby.compatible(from)) offerInvite(lobby, session, game)
+					else if (Minigames.invites.value) Chat.info("§f${msg.fromName} §7opened §b${game.name}§7, but " + versionHint(lobby, from, msg.fromName).removePrefix("§c"))
+				}
 			}
 			"lobby.game" -> if (s != null && from == s.host && !s.inGame) {
 				val game = MinigameRegistry.byId(p["game"]?.asString ?: return) ?: return
@@ -395,8 +417,11 @@ object MinigameHub {
 				if (lobby.active?.session == s.id) lobby.active?.removePlayer(from)
 			}
 			"lobby.hello" -> if (from != Net.selfId) {
+				readVersion(lobby, from, p)
+				lobby.room.send("lobby.ver", versionJson())
 				for (session in lobby.sessions.values) if (session.isHost) lobby.room.send("lobby.state", stateJson(session))
 			}
+			"lobby.ver" -> if (from != Net.selfId) readVersion(lobby, from, p)
 			"lobby.state" -> {
 				val id = p["sid"]?.asString ?: return
 				if (id in lobby.sessions) return
@@ -468,6 +493,27 @@ object MinigameHub {
 				.withHoverEvent(HoverEvent.ShowText(Component.literal("Reopen your game")))
 		}
 		mc.player?.sendSystemMessage(Component.literal("${Chat.PREFIX}§f$by §7resumed your game. ").append(link))
+	}
+
+	private fun versionJson() = JsonObject().apply {
+		addProperty("pv", Compat.PROTOCOL)
+		addProperty("v", Compat.VERSION)
+	}
+
+	private fun readVersion(lobby: Lobby, from: UUID, p: JsonObject) {
+		p["pv"]?.asInt?.let { lobby.protocols[from] = it }
+		p["v"]?.asString?.take(24)?.let { lobby.versions[from] = it }
+	}
+
+	/** Ready players of [session] who can't play with you (different room protocol). */
+	fun incompatibleReady(lobby: Lobby, session: Session): List<String> =
+		session.joined.filter { (id, _) -> id in session.ready && !lobby.compatible(id) }.values.toList()
+
+	/** "You need to update" or "they need to update", whichever side is older. */
+	fun versionHint(lobby: Lobby, id: UUID, name: String): String {
+		val theirs = lobby.versionOf(id)
+		return if (Compat.isNewer(theirs, Compat.VERSION)) "§cyou need to update Skyparty ($name has $theirs, you ${Compat.VERSION})."
+		else "§c$name needs to update Skyparty (they have $theirs, you ${Compat.VERSION})."
 	}
 
 	private fun offerInvite(lobby: Lobby, session: Session, game: Minigame) {

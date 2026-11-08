@@ -7,6 +7,7 @@ package dev.skyparty.core
  */
 object Features {
 	val inits: List<() -> Unit> = listOf(
+		{ dev.skyparty.core.Compat.init() },
 		{ dev.skyparty.party.PartyTracker.init() },
 		{ dev.skyparty.wheel.WheelSession.init() },
 		{ dev.skyparty.party.PartyChat.init() },

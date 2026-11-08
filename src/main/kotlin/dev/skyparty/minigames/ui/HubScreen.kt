@@ -189,6 +189,13 @@ class HubScreen : GameScreen("Skyparty Games") {
 		}
 
 		val lobby = MinigameHub.lobby
+		// A newer Skyparty is out: one click to the download page.
+		dev.skyparty.core.Compat.newerVersion?.let { v ->
+			button(g, ix, cy, iw, 14, "⬆ Skyparty $v is out", mx, my, color = GameColors.GOLD, hint = "You have ${dev.skyparty.core.Compat.VERSION}. Opens the download page.") {
+				net.minecraft.client.gui.screens.ConfirmLinkScreen.confirmLinkNow(this, dev.skyparty.core.Compat.RELEASES_PAGE)
+			}
+			cy += 18
+		}
 		// A paused solo game: the way back in.
 		MinigameHub.activeGame?.takeIf { it.session == null && it.paused }?.let {
 			button(g, ix, cy, iw, 14, "▶ Back to your paused game", mx, my, color = GameColors.GOLD) { MinigameHub.backToGame() }
@@ -289,7 +296,7 @@ class HubScreen : GameScreen("Skyparty Games") {
 				if (i >= rows) { g.text(font, "§8+${mine.joined.size - rows} more", x + 4, cy, Theme.TEXT, false); cy += 10; break }
 				val (id, name) = entry
 				val mark = when { id in mine.playing -> "§e▶"; id in mine.ready -> "§a✔"; else -> "§8○" }
-				val host = if (id == mine.host) " §6★" else ""
+				val host = (if (id == mine.host) " §6★" else "") + if (!lobby.compatible(id)) " §c⚠ update" else ""
 				g.text(font, font.plainSubstrByWidth("$mark §f$name$host", w - 4), x + 4, cy, Theme.TEXT, false)
 				cy += 10
 			}
@@ -300,9 +307,11 @@ class HubScreen : GameScreen("Skyparty Games") {
 				button(g, x, cy, bw, 14, if (mine.selfReady) "✔ Ready" else "Ready", mx, my, color = if (mine.selfReady) GameColors.GREEN else 0xFF3A3050.toInt(),
 					hint = if (mine.selfReady) "Click to be not ready" else "Mark yourself ready") { MinigameHub.setReady(lobby, mine, !mine.selfReady) }
 				if (mine.isHost && game != null) {
-					val ok = mine.selfReady && readyCount >= game.minPlayers && !CombatGuard.blocked
+					val outdated = MinigameHub.incompatibleReady(lobby, mine)
+					val ok = mine.selfReady && readyCount >= game.minPlayers && !CombatGuard.blocked && outdated.isEmpty()
 					val hint = when {
 						!mine.selfReady -> "Ready up first"
+						outdated.isNotEmpty() -> "${outdated.joinToString()}: different Skyparty version"
 						readyCount < game.minPlayers -> "Needs ${game.minPlayers} ready players"
 						else -> "Start with the ${readyCount} ready players"
 					}
@@ -347,8 +356,9 @@ class HubScreen : GameScreen("Skyparty Games") {
 			g.text(font, font.plainSubstrByWidth("§f$name", w - 70), x + 3, cy + 4, Theme.TEXT, false)
 			g.text(font, state, x + w - 40 - font.width(state), cy + 4, Theme.TEXT, false)
 			val full = s.joined.size >= (s.game?.maxPlayers ?: 8)
-			button(g, x + w - 36, cy + 1, 34, 13, if (full) "Full" else "Join", mx, my, enabled = !full, color = GameColors.GREEN,
-				hint = "${s.hostName}'s room" + if (s.inGame) " (playing – you join the next round)" else "") { MinigameHub.join(lobby, s) }
+			val versionOk = lobby.compatible(s.host)
+			button(g, x + w - 36, cy + 1, 34, 13, if (!versionOk) "⚠" else if (full) "Full" else "Join", mx, my, enabled = !full && versionOk, color = GameColors.GREEN,
+				hint = if (!versionOk) MinigameHub.versionHint(lobby, s.host, s.hostName).removePrefix("§c") else "${s.hostName}'s room" + if (s.inGame) " (playing – you join the next round)" else "") { MinigameHub.join(lobby, s) }
 			cy += 17
 		}
 		return cy
