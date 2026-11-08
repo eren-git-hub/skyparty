@@ -49,6 +49,11 @@ class WheelScreen : GameScreen("Decision Wheel") {
 	private var inputFocused = false
 	private var scroll = 0
 	private var lastFrameNs = System.nanoTime()
+
+	/** Tests: frames drawn and the longest gap between two frames while the wheel spins. */
+	var debugFrames = 0
+	var debugMaxGapMs = 0.0
+	var debugWheelNs = 0L
 	private var seenSerial = WheelSession.resultSerial
 	private var resultShownAt = 0L
 	private var lastPointerSlice = -1
@@ -75,6 +80,7 @@ class WheelScreen : GameScreen("Decision Wheel") {
 		val now = System.nanoTime()
 		val dt = ((now - lastFrameNs) / 1e9).coerceIn(0.0, 0.1)
 		lastFrameNs = now
+		if (WheelSession.spinning) { debugFrames++; debugMaxGapMs = maxOf(debugMaxGapMs, dt * 1000) }
 		buttons.clear()
 
 		top = hubChrome(g, HubTabs.WHEEL)
@@ -84,7 +90,9 @@ class WheelScreen : GameScreen("Decision Wheel") {
 			resultShownAt = System.currentTimeMillis()
 			burstConfetti()
 		}
+		val t0 = System.nanoTime()
 		drawWheel(g, dt)
+		if (WheelSession.spinning) debugWheelNs += System.nanoTime() - t0
 		drawWheelControls(g)
 		drawPanel(g, mouseX, mouseY)
 		drawRoomPanel(g, mouseX, mouseY)
@@ -237,26 +245,14 @@ class WheelScreen : GameScreen("Decision Wheel") {
 
 		// Shadow, rim, light ring
 		Shapes.disk(g, cx + 1.5, cy + 3.5, r + 6, 0x60000000)
-		Shapes.disk(g, cx, cy, r + 6, 0xFF241C2E.toInt())
-		Shapes.disk(g, cx, cy, r + 5, 0xFFB98A2E.toInt())
-		Shapes.disk(g, cx, cy, r + 4, 0xFFE9BE55.toInt())
-		Shapes.disk(g, cx, cy, r + 1, 0xFF241C2E.toInt())
+		// Rim, slices and borders come from a cached texture that is only rotated here (cheap every frame).
+		val sliceColors = IntArray(names.size) { sliceColor(it, names.size) }
+		faceTexture.draw(g, cx, cy, r, if (names.isEmpty()) DoubleArray(1) else starts, sliceColors, rot)
 
 		if (names.isEmpty()) {
-			Shapes.disk(g, cx, cy, r, 0xFF2A2A36.toInt())
 			g.centeredText(font, "Add entries", cx.toInt(), (cy + r * 0.45).toInt(), Theme.TEXT_DIM)
 		} else {
-			val n = names.size
-			Shapes.sectors(g, cx, cy, r, 0.0, starts, rot) { ColorUtil.shade(sliceColor(it, n), 0.72f) }
-			Shapes.sectors(g, cx, cy, r - 3, 0.0, starts, rot) { sliceColor(it, n) }
-			Shapes.sectors(g, cx, cy, r * 0.5, 0.0, starts, rot) { ColorUtil.shade(sliceColor(it, n), 1.1f) }
-			if (winner >= 0) {
-				val pulse = (0.5 + 0.5 * sin(ms / 160.0)).toFloat()
-				Shapes.sectors(g, cx, cy, r, 0.0, starts, rot) {
-					if (it == winner) ColorUtil.withAlpha(0xFFFFFFFF.toInt(), (40 + 50 * pulse).toInt()) else 0x78000000
-				}
-			}
-			if (n > 1) for (k in 0 until n) Shapes.ray(g, cx, cy, starts[k] + rot, r * 0.2, r, 1.0, 0x90FFFFFF.toInt())
+			if (winner >= 0) highlightTexture.draw(g, cx, cy, r, starts, sliceColors, rot, winner)
 			drawLabels(g, names, starts, rot, winner)
 		}
 
@@ -682,6 +678,10 @@ class WheelScreen : GameScreen("Decision Wheel") {
 	}
 
 	companion object {
+		// Shared by every wheel screen, so reopening the wheel reuses the same textures.
+		private val faceTexture by lazy { WheelTexture("wheel_face", WheelTexture.Layer.FACE) }
+		private val highlightTexture by lazy { WheelTexture("wheel_highlight", WheelTexture.Layer.HIGHLIGHT) }
+
 		val PALETTE = intArrayOf(
 			0xFFFF5D73.toInt(), // coral red
 			0xFFFF9F43.toInt(), // orange
