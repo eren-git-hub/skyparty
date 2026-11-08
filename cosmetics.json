@@ -2,7 +2,7 @@
 	"cat_ears": ["evocative", "mutsiri", "jijli", "limnophobia", "siasow"],
 	"dragon_wings": ["exlusiv"],
 	"horns": ["exlusiv"],
-	"bunny_ears": [],
+	"bunny_ears": ["daichoo"],
 	"ranks": {
 		"LARP": { "tag": "&b[LARP&1++&b]", "players": ["exlusiv"] }
 	}
