@@ -46,6 +46,12 @@ object RemotePets {
 	/** Players whose pet info we have (for tests and the pets screen). */
 	val knownOwners: Set<UUID> get() = infos.keys
 
+	/** Pet colors (body, accent) of a player: your own from the settings, others from their announced pet; null if unknown. */
+	fun colorsOf(player: net.minecraft.world.entity.player.Player): Pair<Int, Int>? {
+		if (player === Minecraft.getInstance().player) return (CustomPets.bodyColor.value or 0xFF000000.toInt()) to (CustomPets.accentColor.value or 0xFF000000.toInt())
+		return infos[player.uuid]?.let { (it.body or 0xFF000000.toInt()) to (it.accent or 0xFF000000.toInt()) }
+	}
+
 	fun tick(mc: Minecraft) {
 		if (ticks++ % 20 == 0) serverId = currentServer()
 		syncRoom()

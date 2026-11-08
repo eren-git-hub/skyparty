@@ -94,6 +94,8 @@ object PetModels {
 			PetSpecies.AXOLOTL -> b.defineAxolotl()
 			PetSpecies.GHOST -> b.defineGhost()
 			PetSpecies.PENGUIN -> b.definePenguin()
+			PetSpecies.CAT -> b.defineCat()
+			PetSpecies.DOG -> b.defineDog()
 		}
 		return PetModel(LayerDefinition.create(mesh, 16, 16).bakeRoot(), b.parts, species.scale, species)
 	}

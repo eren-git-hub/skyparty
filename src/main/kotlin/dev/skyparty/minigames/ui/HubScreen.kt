@@ -43,7 +43,8 @@ class HubScreen : GameScreen("Skyparty Games") {
 
 	private fun drawGames(g: GuiGraphicsExtractor, x: Int, y: Int, w: Int, h: Int, mx: Int, my: Int) {
 		listBox = intArrayOf(x, y, w, h)
-		val games = MinigameRegistry.all.toList()
+		// Dungeon Run first (the newest big game), the rest in registration order.
+		val games = MinigameRegistry.all.sortedByDescending { it.id == dev.skyparty.minigames.dungeon.DungeonRun.id }
 		val cardH = 56
 		val gap = 4
 		maxScroll = (games.size * (cardH + gap) - gap - h).coerceAtLeast(0)
@@ -160,13 +161,13 @@ class HubScreen : GameScreen("Skyparty Games") {
 		}
 	}
 
-	override fun mouseScrolled(mouseX: Double, mouseY: Double, scrollX: Double, scrollY: Double): Boolean {
+	override fun onScroll(mouseX: Double, mouseY: Double, scrollX: Double, scrollY: Double): Boolean {
 		val (x, y, w, h) = listBox
 		if (mouseX >= x && mouseX < x + w && mouseY >= y && mouseY < y + h) {
 			scroll = (scroll - (scrollY * 20).toInt()).coerceIn(0, maxScroll)
 			return true
 		}
-		return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY)
+		return super.onScroll(mouseX, mouseY, scrollX, scrollY)
 	}
 
 	// ------------------------------------------------------------------ room / lobby panel

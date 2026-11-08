@@ -641,7 +641,7 @@ class WheelScreen : GameScreen("Decision Wheel") {
 		return super.mouseClicked(event, doubleClick)
 	}
 
-	override fun mouseScrolled(mouseX: Double, mouseY: Double, scrollX: Double, scrollY: Double): Boolean {
+	override fun onScroll(mouseX: Double, mouseY: Double, scrollX: Double, scrollY: Double): Boolean {
 		if (mouseX >= roomX) {
 			playerScroll -= scrollY.toInt().coerceIn(-3, 3)
 			return true
@@ -650,7 +650,7 @@ class WheelScreen : GameScreen("Decision Wheel") {
 			scroll -= scrollY.toInt().coerceIn(-3, 3)
 			return true
 		}
-		return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY)
+		return super.onScroll(mouseX, mouseY, scrollX, scrollY)
 	}
 
 	override fun onKey(event: KeyEvent): Boolean {

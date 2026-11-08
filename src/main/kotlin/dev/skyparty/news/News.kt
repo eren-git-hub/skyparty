@@ -278,7 +278,7 @@ class NewsScreen : GameScreen("News") {
 		g.disableScissor()
 	}
 
-	override fun mouseScrolled(mouseX: Double, mouseY: Double, scrollX: Double, scrollY: Double): Boolean {
+	override fun onScroll(mouseX: Double, mouseY: Double, scrollX: Double, scrollY: Double): Boolean {
 		val (x, y, w, h) = listBox
 		if (mouseX >= x && mouseX < x + w && mouseY >= y && mouseY < y + h) listScroll = (listScroll - (scrollY * 26).toInt()).coerceAtLeast(0)
 		else textScroll = (textScroll - (scrollY * 20).toInt()).coerceIn(0, maxText)

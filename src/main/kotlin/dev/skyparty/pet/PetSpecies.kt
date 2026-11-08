@@ -8,7 +8,9 @@ enum class PetSpecies(val label: String, val floats: Boolean, val scale: Float) 
 	RYU("Ryu", true, 0.8f),
 	AXOLOTL("Axolotl", false, 0.9f),
 	GHOST("Ghost", true, 0.85f),
-	PENGUIN("Penguin", false, 0.9f);
+	PENGUIN("Penguin", false, 0.9f),
+	CAT("Cat", false, 0.9f),
+	DOG("Dog", false, 0.85f);
 
 	companion object {
 		val labels = entries.map { it.label }

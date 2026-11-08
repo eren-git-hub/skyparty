@@ -182,10 +182,23 @@ abstract class GameScreen(title: String, /** The running game (null for menus); 
 		g.text(font, "§d✉ Party chat", x + 4, y + 3, Theme.TEXT, false)
 		pc.markRead()
 		// Newest messages at the bottom, wrapped to the box.
-		val rows = dev.skyparty.party.PartyChat.lines.toList().takeLast(rowsMax)
-			.flatMap { font.split(Component.literal(dev.skyparty.party.PartyChat.format(it)), w - 8) }.takeLast(rowsMax)
+		// All messages wrapped to the box; the mouse wheel scrolls back through them (0 = newest at the bottom).
+		val all = pc.lines.toList().flatMap { font.split(Component.literal(pc.format(it)), w - 12) }
+		chatMaxScroll = (all.size - rowsMax).coerceAtLeast(0)
+		chatScroll = chatScroll.coerceIn(0, chatMaxScroll)
+		val end = all.size - chatScroll
+		val rows = all.subList((end - rowsMax).coerceAtLeast(0), end)
 		if (rows.isEmpty()) g.text(font, "§8No party messages yet", x + 4, y + 13, Theme.TEXT, false)
 		for ((i, row) in rows.withIndex()) g.text(font, row, x + 4, y + 13 + (rowsMax - rows.size + i) * 9, Theme.TEXT, false)
+		if (chatMaxScroll > 0) {
+			// Thin scrollbar on the right edge of the message area.
+			val trackTop = y + 13
+			val trackH = rowsMax * 9
+			val thumbH = (trackH * rowsMax / all.size).coerceAtLeast(6)
+			val thumbY = trackTop + (trackH - thumbH) * (chatMaxScroll - chatScroll) / chatMaxScroll
+			g.fill(x + w - 4, trackTop, x + w - 3, trackTop + trackH, 0x30FFFFFF)
+			g.fill(x + w - 4, thumbY, x + w - 3, thumbY + thumbH, ColorUtil.withAlpha(0xFFFF7EB6.toInt(), 0xC0))
+		}
 		// Input line
 		val iy = y + h - 14
 		g.fill(x + 3, iy, x + w - 3, iy + 11, 0xFF0A0A0F.toInt())
@@ -206,6 +219,24 @@ abstract class GameScreen(title: String, /** The running game (null for menus); 
 		if (fHover) tooltip("Fold the party chat")
 		clickArea(fx, y + 1, 12, 10) { pc.windowOpen = false; chatFocused = false }
 	}
+
+	private var chatScroll = 0
+	private var chatMaxScroll = 0
+
+	final override fun mouseScrolled(mouseX: Double, mouseY: Double, scrollX: Double, scrollY: Double): Boolean {
+		// Over the open party chat the wheel scrolls the chat, everywhere else the screen.
+		if (dev.skyparty.party.PartyChat.windowOpen && inChat(mouseX, mouseY)) {
+			chatScroll = (chatScroll + if (scrollY > 0) 1 else if (scrollY < 0) -1 else 0).coerceIn(0, chatMaxScroll)
+			return true
+		}
+		return onScroll(mouseX, mouseY, scrollX, scrollY)
+	}
+
+	/** Mouse wheel (not over the party chat). */
+	open fun onScroll(mouseX: Double, mouseY: Double, scrollX: Double, scrollY: Double): Boolean = super.mouseScrolled(mouseX, mouseY, scrollX, scrollY)
+
+	/** Tests: scroll position of the party chat (0 = newest). */
+	val debugChatScroll get() = chatScroll
 
 	private fun inChat(mx: Double, my: Double) = chatBox[2] > 0 && mx >= chatBox[0] && mx < chatBox[2] && my >= chatBox[1] && my < chatBox[3]
 

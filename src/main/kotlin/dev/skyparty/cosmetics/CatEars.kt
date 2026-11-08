@@ -27,7 +27,7 @@ import kotlin.math.sin
  * is submitted, so the shared parts never carry per-player state (submitted parts are drawn later).
  */
 object CatEars {
-	// Classic catgirl look: black ears (pink inside) and a black tail.
+	// Fur and inner ear take the pet's body and accent colors; without a known pet: black ears, pink inside.
 	private const val FUR = 0xFF1B1A1F.toInt()
 
 	/** Extra names for tests only (the dev account is "Player0"). */
@@ -68,7 +68,9 @@ object CatEars {
 		val cam = ctx.levelState().cameraRenderState.pos
 		for (player in level.players()) {
 			if (!hasCatEars(player)) continue
-			val fur = FUR
+			val colors = dev.skyparty.pet.RemotePets.colorsOf(player)
+			val fur = colors?.first ?: FUR
+			val inner = colors?.second ?: INNER
 			if (player.isInvisible) continue
 			if (player === mc.player && mc.options.cameraType.isFirstPerson) continue
 			val pos = player.getPosition(partial)
@@ -99,7 +101,7 @@ object CatEars {
 				pose.mulPose(Axis.ZP.rotationDegrees(-7f * side + (if (side > 0) twitch else 0f)))
 				pose.mulPose(Axis.XP.rotationDegrees(-8f))
 				submit(ctx, parts.ear, pose, light, fur)
-				submit(ctx, parts.earInner, pose, light, INNER)
+				submit(ctx, parts.earInner, pose, light, inner)
 				pose.popPose()
 			}
 			pose.popPose()

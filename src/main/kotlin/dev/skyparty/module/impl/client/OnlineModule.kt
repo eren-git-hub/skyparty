@@ -32,8 +32,11 @@ object OnlineModule : Module(
 		Net.transport = LoopbackTransport
 	}
 
+	/** Tests only (screenshots): show this instead of the real connection status. */
+	var statusOverrideForTest: String? = null
+
 	/** Short status for the UI, e.g. "Online as Steve" or "Connecting…". */
-	fun status(): String = when (BackendTransport.state) {
+	fun status(): String = statusOverrideForTest ?: when (BackendTransport.state) {
 		BackendTransport.State.ONLINE -> "§aOnline" + (BackendTransport.session?.let { " as ${it.name}" } ?: "")
 		BackendTransport.State.CONNECTING -> "§eConnecting…"
 		BackendTransport.State.ERROR -> "§cOffline – ${BackendTransport.lastError ?: "error"}"

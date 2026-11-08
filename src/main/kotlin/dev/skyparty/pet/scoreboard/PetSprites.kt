@@ -100,6 +100,34 @@ object PetSprites {
 		Sprite(PENGUIN_TOP + ".AA....AA."),
 	))
 
+	private val CAT_TOP = listOf(
+		"...........K..K.",
+		".K........KAKKAK",
+		"KBK.......KBBBBK",
+		"KBK.......KBEBEK",
+		".KBK......KBBABK",
+		"..KBKKKKKKBBBBK.",
+		"..KBBBBBBBBBBK..",
+		"...KSSSSSSSSK...",
+	)
+	val cat = StageSprites(listOf(
+		Sprite(CAT_TOP + listOf("...KSK....KSK...", "...KK.....KK....")),
+		Sprite(CAT_TOP + listOf("....KSK..KSK....", "....KK...KK.....")),
+	))
+
+	// Dog: floppy ear, collar in the accent color, the tail wags between the frames.
+	private val DOG_HEAD = "..........KKKK.."
+	private val DOG_BODY = listOf(
+		"..KKKKKKKSBBBBEK",
+		"..KBBBBBBKAAAKK.",
+		"..KBBBBBBBBBBK..",
+		"..KSSSSSSSSSSK..",
+	)
+	val dog = StageSprites(listOf(
+		Sprite(listOf(DOG_HEAD, "K........KBBBBK.", "KB......KSBBEBK.", ".KB.....KSBBBBBK") + DOG_BODY + listOf("..KSK.....KSK...", "..KK......KK....")),
+		Sprite(listOf(DOG_HEAD, "..K......KBBBBK.", "..KB....KSBBEBK.", "..KB....KSBBBBBK") + DOG_BODY + listOf("...KSK...KSK....", "...KK....KK.....")),
+	))
+
 	val ryu = StageSprites(listOf(
 		Sprite(listOf(
 			"...............W.W..",
@@ -132,6 +160,8 @@ object PetSprites {
 		dev.skyparty.pet.PetSpecies.AXOLOTL -> axolotl
 		dev.skyparty.pet.PetSpecies.GHOST -> ghost
 		dev.skyparty.pet.PetSpecies.PENGUIN -> penguin
+		dev.skyparty.pet.PetSpecies.CAT -> cat
+		dev.skyparty.pet.PetSpecies.DOG -> dog
 	}
 
 	/** Food for the feed key: a little drumstick (5x5). */

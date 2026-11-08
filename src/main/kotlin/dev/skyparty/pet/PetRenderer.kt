@@ -67,6 +67,8 @@ object PetRenderer {
 			PetSpecies.AXOLOTL -> { model.reset(); animateAxolotl(model, time, follower.speed, asleep, react) }
 			PetSpecies.GHOST -> { model.reset(); animateGhost(model, time, follower.speed, asleep, react) }
 			PetSpecies.PENGUIN -> { model.reset(); animatePenguin(model, time, follower.speed, asleep, react) }
+			PetSpecies.CAT -> { model.reset(); animateCat(model, time, follower.speed, asleep, react) }
+			PetSpecies.DOG -> { model.reset(); animateDog(model, time, follower.speed, asleep, react) }
 		}
 
 		val pos = follower.renderPos(partial)

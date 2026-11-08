@@ -100,7 +100,7 @@ abstract class ModuleSettingsScreen(title: String) : GameScreen(title) {
 		return super.mouseReleased(event)
 	}
 
-	override fun mouseScrolled(mouseX: Double, mouseY: Double, scrollX: Double, scrollY: Double): Boolean {
+	override fun onScroll(mouseX: Double, mouseY: Double, scrollX: Double, scrollY: Double): Boolean {
 		scroll = (scroll - (scrollY * 20).toInt()).coerceIn(0, maxScroll)
 		return true
 	}

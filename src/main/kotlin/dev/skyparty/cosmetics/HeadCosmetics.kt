@@ -92,6 +92,9 @@ object HeadCosmetics {
 			val walk = player.walkAnimation.speed(partial).coerceIn(0f, 1f)
 			val light = lightAt(level, BlockPos.containing(pos.x, pos.y + 1.6, pos.z))
 			val pose = ctx.poseStack()
+			val colors = dev.skyparty.pet.RemotePets.colorsOf(player)
+			val fur = colors?.first ?: FUR
+			val inner = colors?.second ?: INNER
 
 			pose.pushPose()
 			pose.translate(pos.x - cam.x, pos.y - cam.y, pos.z - cam.z)
@@ -125,14 +128,14 @@ object HeadCosmetics {
 				val twitch = if ((time / 60).toInt() % 3 == 0 && side > 0) sin(time * 1.3f) * 6f else 0f
 				pose.mulPose(Axis.ZP.rotationDegrees(-10f * side + twitch))
 				pose.mulPose(Axis.XP.rotationDegrees(-10f + bounce))
-				submit(ctx, parts.earLow, pose, light, FUR)
-				submit(ctx, parts.earInnerLow, pose, light, INNER)
+				submit(ctx, parts.earLow, pose, light, fur)
+				submit(ctx, parts.earInnerLow, pose, light, inner)
 				pose.px(0f, 4.2f, 0f)
 				// One ear stands up, the other flops over at the middle.
 				if (side > 0) pose.mulPose(Axis.XP.rotationDegrees(-8f - bounce * 0.5f))
 				else pose.mulPose(Axis.XP.rotationDegrees(-95f + sin(time * 0.08f) * 5f))
-				submit(ctx, parts.earHigh, pose, light, FUR)
-				submit(ctx, parts.earInnerHigh, pose, light, INNER)
+				submit(ctx, parts.earHigh, pose, light, fur)
+				submit(ctx, parts.earInnerHigh, pose, light, inner)
 				pose.popPose()
 			}
 			pose.popPose()

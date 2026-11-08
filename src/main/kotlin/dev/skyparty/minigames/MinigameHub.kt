@@ -120,9 +120,16 @@ object MinigameHub {
 		MinigameRegistry.register(dev.skyparty.minigames.imposter.Imposter)
 		MinigameRegistry.register(dev.skyparty.minigames.bluff.BazaarBluff)
 		MinigameRegistry.register(dev.skyparty.minigames.sketch.Pictionary)
+		MinigameRegistry.register(dev.skyparty.minigames.quiz.SkyblockQuiz)
+		MinigameRegistry.register(dev.skyparty.minigames.typing.TypingRace)
+		MinigameRegistry.register(dev.skyparty.minigames.trader.BazaarTrader)
+		MinigameRegistry.register(dev.skyparty.minigames.fishing.FishingDerby)
+		MinigameRegistry.register(dev.skyparty.minigames.dungeon.DungeonRun)
 		for ((cmd, game) in listOf<Pair<String, Minigame>>("connect4" to dev.skyparty.minigames.board.ConnectFour, "tictactoe" to dev.skyparty.minigames.board.TicTacToe,
 			"bomb" to dev.skyparty.minigames.bomb.BombPass, "imposter" to dev.skyparty.minigames.imposter.Imposter,
-			"bluff" to dev.skyparty.minigames.bluff.BazaarBluff, "sketch" to dev.skyparty.minigames.sketch.Pictionary)) {
+			"bluff" to dev.skyparty.minigames.bluff.BazaarBluff, "sketch" to dev.skyparty.minigames.sketch.Pictionary,
+			"quiz" to dev.skyparty.minigames.quiz.SkyblockQuiz, "typing" to dev.skyparty.minigames.typing.TypingRace,
+			"trader" to dev.skyparty.minigames.trader.BazaarTrader, "fishing" to dev.skyparty.minigames.fishing.FishingDerby, "dungeon" to dev.skyparty.minigames.dungeon.DungeonRun)) {
 			SkypartyCommands.sub { ClientCommands.literal(cmd).executes { game.open(null); 1 } }
 		}
 		MinigameStore.load()
