@@ -5,6 +5,7 @@
 	"bunny_ears": ["daichoo", "siasow"],
 	"ranks": {
 		"LARP": { "tag": "&b[LARP&1++&b]", "players": ["exlusiv"] },
-		"BUM": { "tag": "&6[Bum++]", "players": ["daichoo"] }
+		"BUM": { "tag": "&6[Bum++]", "players": ["daichoo"] },
+		"HELIX": { "tag": "&a[HELIX++]", "players": ["littlevoidling_"] }
 	}
 }
