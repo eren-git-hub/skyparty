@@ -13,6 +13,7 @@ object ModuleManager {
 		// Pets
 		CustomPets,
 		ScoreboardPet,
+		dev.skyparty.module.impl.pets.EmotesModule,
 		// Party
 		Minigames,
 		DecisionWheel,

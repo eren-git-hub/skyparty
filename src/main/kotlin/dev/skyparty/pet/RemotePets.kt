@@ -35,13 +35,15 @@ object RemotePets {
 	private val pets = HashMap<UUID, Pet>()
 
 	private var room: Net.Room? = null
+	/** The lobby room of this Hypixel server (shared with emotes); null while offline. */
+	val lobbyRoom: Net.Room? get() = room
 	private var roomTransport: Net.Transport? = null
 	private var lastSent: String? = null
 	private var announceAt = 0L
 	private var ticks = 0
 	private var serverId: String? = null
 
-	fun visible(): Collection<Pet> = pets.values
+	fun visible(): Collection<Pet> = if (CustomPets.enabled) pets.values else emptyList()
 
 	/** Players whose pet info we have (for tests and the pets screen). */
 	val knownOwners: Set<UUID> get() = infos.keys
@@ -71,21 +73,24 @@ object RemotePets {
 	}
 
 	private fun syncRoom() {
-		val wanted = serverId?.takeIf { CustomPets.enabled && Net.transport.connected }?.let { "pets:$it" }
+		val wanted = serverId?.takeIf { Net.transport.connected }?.let { "pets:$it" }
 		val current = room
 		if (current?.id == wanted && (wanted == null || roomTransport === Net.transport)) return
 		current?.leave()
 		room = null
 		infos.clear()
-		lastSent = null
+		dev.skyparty.emote.Emotes.onLobbyChanged()
+		// Nobody here has seen a pet from us yet, so a hidden pet needs no message.
+		lastSent = "hidden"
 		if (wanted == null) return
 		val r = Net.join(wanted)
 		roomTransport = Net.transport
 		r.onMessage = ::onMessage
 		r.onMembersChanged = { members ->
 			infos.keys.retainAll(members)
+			dev.skyparty.emote.Emotes.onMembersChanged(members)
 			// Someone new is here: tell them about our pet (after a short delay, so a lobby of joins is one send).
-			lastSent = null
+			if (ownLook() != "hidden") lastSent = null
 			announceAt = System.currentTimeMillis() + ANNOUNCE_DELAY_MS
 		}
 		room = r
@@ -95,7 +100,7 @@ object RemotePets {
 
 	/** What we announce, or "hidden" when the pet is set to Only Me. */
 	private fun ownLook(): String =
-		if (CustomPets.visibility.value != "Everyone") "hidden"
+		if (!CustomPets.enabled || CustomPets.visibility.value != "Everyone") "hidden"
 		else "${CustomPets.petName.value}|${CustomPets.bodyColor.value}|${CustomPets.accentColor.value}|${CustomPets.species.value}"
 
 	private fun announce(r: Net.Room, look: String) {
@@ -125,6 +130,7 @@ object RemotePets {
 				)
 			}.onFailure { log.debug("Bad pet.info from {}", msg.fromName) }
 			"pet.hide" -> infos.remove(msg.from)
+			"emote" -> dev.skyparty.emote.Emotes.onMessage(msg)
 		}
 	}
 

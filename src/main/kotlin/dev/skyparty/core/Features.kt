@@ -13,6 +13,7 @@ object Features {
 		{ dev.skyparty.wheel.WheelSession.init() },
 		{ dev.skyparty.party.PartyChat.init() },
 		{ dev.skyparty.party.FriendTracker.init() },
+		{ dev.skyparty.emote.Emotes.init() },
 		{ dev.skyparty.cosmetics.CosmeticOwners.init() },
 		{ dev.skyparty.cosmetics.RankTags.init() },
 		// Parkour registers first so it is at the top of the games list.

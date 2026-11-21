@@ -1,0 +1,15 @@
+package dev.skyparty.module.impl.pets
+
+import dev.skyparty.module.Category
+import dev.skyparty.module.Module
+
+object EmotesModule : Module(
+	id = "emotes",
+	name = "Emotes",
+	description = "Visual emotes like the folding chair (/sp sit or a key in Controls). Others with Skyparty see them.",
+	category = Category.PETS,
+	defaultEnabled = true,
+) {
+	val showOthers = boolean("Show Others' Emotes", true)
+	val chairColor = color("Chair Color", 0xFF2F5FB3.toInt(), allowAlpha = false)
+}
