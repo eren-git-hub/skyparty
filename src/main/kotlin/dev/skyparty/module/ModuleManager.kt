@@ -17,6 +17,7 @@ object ModuleManager {
 		Minigames,
 		DecisionWheel,
 		dev.skyparty.module.impl.party.PartyChatModule,
+		dev.skyparty.module.impl.party.FriendAlerts,
 		// Stats
 		Wrapped,
 		// Client
