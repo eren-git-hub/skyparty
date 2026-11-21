@@ -34,6 +34,20 @@ public final class EmoteMixins {
 			state.isCrouching = false;
 			state.isPassenger = false;
 			state.walkAnimationSpeed = 0f;
+			// Effects drawn for the standing body would float in the wrong place: no fire, freeze shake,
+			// stuck arrows / stingers, item use or riptide spin while emoting.
+			state.displayFireAnimation = false;
+			state.isFullyFrozen = false;
+			state.arrowCount = 0;
+			state.stingerCount = 0;
+			state.isUsingItem = false;
+			state.isAutoSpinAttack = false;
+			// The cape would go through the chair or the ground.
+			if (emote == Emotes.Emote.CHAIR || emote == Emotes.Emote.SLEEP) state.showCape = false;
+			// Name tag closer to the body when sitting low or lying.
+			if (state.nameTagAttachment != null && (emote == Emotes.Emote.CHAIR || emote == Emotes.Emote.SLEEP)) {
+				state.nameTagAttachment = state.nameTagAttachment.add(0, emote == Emotes.Emote.SLEEP ? -1.3 : -0.55, 0);
+			}
 			float head = state.bodyRot + state.yRot;
 			float yaw = Emotes.INSTANCE.yawOf(player, state.bodyRot);
 			state.bodyRot = yaw;
