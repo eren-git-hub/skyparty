@@ -36,7 +36,7 @@ object FriendTracker {
 	/** UNVERIFIED: "<< Friends (Page 1 of 3) >>" (arrows only where there is another page). */
 	val LIST_HEADER = Regex("^[<\\s]*Friends \\(Page (\\d+) of (\\d+)\\)[>\\s]*$")
 	/** UNVERIFIED: "[MVP+] Name is in SkyBlock" / "Name is currently offline" / "Name is in an unknown realm". */
-	val LIST_ENTRY = Regex("^$NAME is (currently offline|in .+)$")
+	val LIST_ENTRY = Regex("^$NAME is (currently offline|.+)$")
 	/** UNVERIFIED: reply to /f list without friends. */
 	val NO_FRIENDS = Regex("^You don't have any friends.*$")
 	/** VERIFIED: "Friend > Name joined." / "Friend > Name left." */
@@ -100,7 +100,12 @@ object FriendTracker {
 		ClientReceiveMessageEvents.ALLOW_GAME.register { message, overlay ->
 			if (overlay || System.currentTimeMillis() > hideUntil) return@register true
 			val text = Chat.strip(message.string)
-			if (!text.lines().all { isListLine(it.trim()) }) return@register true
+			// Our quiet /f list: Hypixel sends each page as one message framed by dash lines, so hide the whole
+			// block whatever the lines in between look like (line formats can change).
+			val lines = text.lines().map { it.trim() }.filter { it.isNotEmpty() }
+			val framed = lines.size >= 2 && PartyPatterns.SEPARATOR.matches(lines.first()) && PartyPatterns.SEPARATOR.matches(lines.last()) &&
+				lines.any { it.contains("Friends", ignoreCase = true) || NO_FRIENDS.matches(it) }
+			if (!framed && !lines.all { isListLine(it) }) return@register true
 			onChat(text)
 			false
 		}
@@ -139,7 +144,7 @@ object FriendTracker {
 		if (inBlock) {
 			LIST_ENTRY.matchEntire(line)?.let {
 				blockNames += it.groupValues[1]
-				setStatus(it.groupValues[1], it.groupValues[2].let { s -> if (s == "currently offline") "" else s.removePrefix("in ").removePrefix("a ").removePrefix("an ") })
+				setStatus(it.groupValues[1], it.groupValues[2].let { s -> if (s == "currently offline") "" else s.removePrefix("idle ").removePrefix("in ").removePrefix("a ").removePrefix("an ") })
 				return
 			}
 			endBlock()

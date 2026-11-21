@@ -58,18 +58,20 @@ object EmotePoses {
 	}
 
 	/**
-	 * Head turn relative to the body during an emote, from the normal one ([yaw], [pitch] in radians):
-	 * returns yaw, pitch, roll in radians. Used for the model and for the cosmetics on the head.
+	 * Head turn relative to the body during an emote (yaw, pitch, roll in radians). The head does not follow
+	 * where you look: it faces straight ahead, only the emote's own motion moves it. [yaw] and [pitch] (the
+	 * normal look) are not used. Shared by the model and the cosmetics on the head.
 	 */
 	fun head(d: Emotes.Drawn, yaw: Float, pitch: Float): FloatArray {
 		val t = d.age
 		return when (d.emote) {
-			Emote.CHAIR -> floatArrayOf(yaw, (pitch - 0.25f).coerceIn(-1.2f, 0.6f), 0f)
+			// The body leans back: tilt the head forward so the face looks ahead, not at the sky.
+			Emote.CHAIR -> floatArrayOf(0f, 0.42f, 0f)
 			Emote.SLEEP -> floatArrayOf(0f, 0f, 0.12f)
 			Emote.FACEPALM -> floatArrayOf(sin(t * 0.25f) * 0.12f, 0.45f, 0f)
-			Emote.CHEER -> floatArrayOf(yaw, -0.35f, 0f)
+			Emote.CHEER -> floatArrayOf(0f, -0.35f, 0f)
 			Emote.DANCE -> floatArrayOf(0f, 0.1f + sin(t * 0.64f) * 0.12f, 0f)
-			Emote.WAVE -> floatArrayOf(yaw, pitch, 0f)
+			Emote.WAVE -> floatArrayOf(0f, 0f, 0f)
 		}
 	}
 
@@ -118,10 +120,11 @@ object EmotePoses {
 		m.head.yRot = h[0]; m.head.xRot = h[1]; m.head.zRot = h[2]
 		when (d.emote) {
 			Emote.CHAIR -> {
-				// Legs stretched out towards the ground (the body leans back, so the angle is relative), hands behind the head.
+				// Legs stretched out towards the ground (the body leans back, so the angle is relative),
+				// arms relaxed with the hands resting on the lap (clear of the head and the backrest).
 				leg(m, -0.80f, 0.12f)
-				m.rightArm.xRot = -2.95f; m.rightArm.yRot = 0f; m.rightArm.zRot = 0.62f
-				m.leftArm.xRot = -2.95f; m.leftArm.yRot = 0f; m.leftArm.zRot = -0.62f
+				m.rightArm.xRot = -0.85f; m.rightArm.yRot = 0f; m.rightArm.zRot = -0.32f
+				m.leftArm.xRot = -0.85f; m.leftArm.yRot = 0f; m.leftArm.zRot = 0.32f
 			}
 			Emote.WAVE -> {
 				m.rightArm.xRot = -0.2f
