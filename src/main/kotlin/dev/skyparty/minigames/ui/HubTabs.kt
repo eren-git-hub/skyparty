@@ -5,16 +5,18 @@ import net.minecraft.client.gui.screens.Screen
 /** The tabs of the main Skyparty menu (/skyparty). */
 object HubTabs {
 	const val GAMES = 0
-	const val WHEEL = 1
-	const val DLE = 2
-	const val NEWS = 3
-	const val MAYOR = 4
-	const val REMINDERS = 5
-	const val WRAPPED = 6
+	const val FRIENDS = 1
+	const val WHEEL = 2
+	const val DLE = 3
+	const val NEWS = 4
+	const val MAYOR = 5
+	const val REMINDERS = 6
+	const val WRAPPED = 7
 
-	val names = listOf("★ Games", "◎ Wheel", "✎ Skyblockdle", "✉ News", "♔ Mayor", "⏰ Reminders", "✦ Wrapped")
+	val names = listOf("★ Games", "☺ Friends", "◎ Wheel", "✎ Skyblockdle", "✉ News", "♔ Mayor", "⏰ Reminders", "✦ Wrapped")
 
 	fun open(index: Int): Screen = when (index) {
+		FRIENDS -> dev.skyparty.party.FriendsScreen()
 		WHEEL -> dev.skyparty.wheel.WheelScreen()
 		DLE -> dev.skyparty.dle.DleScreen()
 		NEWS -> dev.skyparty.news.NewsScreen()

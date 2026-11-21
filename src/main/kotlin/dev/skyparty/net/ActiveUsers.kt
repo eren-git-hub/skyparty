@@ -24,6 +24,20 @@ object ActiveUsers {
 
 	val online: Boolean get() = room != null && Net.transport.connected
 
+	/** Tests only: players that count as Skyparty users. */
+	val testUsers = mutableSetOf<java.util.UUID>()
+	val testNames = mutableSetOf<String>()
+
+	/** Same as [isUser], by name (lists that only have names, like your friends). */
+	fun isUserName(name: String) = testNames.any { it.equals(name, true) } || names.any { it.equals(name, true) }
+
+	/** Whether this player is online with Skyparty right now (by UUID, so nicks and renames do not matter). */
+	fun isUser(uuid: java.util.UUID): Boolean {
+		if (uuid in testUsers) return true
+		val r = room ?: return false
+		return Net.transport.connected && (uuid == Net.selfId || uuid in r.members)
+	}
+
 	fun init() {
 		ClientTickEvents.END_CLIENT_TICK.register { sync() }
 	}

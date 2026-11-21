@@ -36,11 +36,11 @@ object FriendTracker {
 	/** UNVERIFIED: "<< Friends (Page 1 of 3) >>" (arrows only where there is another page). */
 	val LIST_HEADER = Regex("^[<\\s]*Friends \\(Page (\\d+) of (\\d+)\\)[>\\s]*$")
 	/** UNVERIFIED: "[MVP+] Name is in SkyBlock" / "Name is currently offline" / "Name is in an unknown realm". */
-	val LIST_ENTRY = Regex("^$NAME is (?:currently offline|in .+)$")
+	val LIST_ENTRY = Regex("^$NAME is (currently offline|in .+)$")
 	/** UNVERIFIED: reply to /f list without friends. */
 	val NO_FRIENDS = Regex("^You don't have any friends.*$")
 	/** VERIFIED: "Friend > Name joined." / "Friend > Name left." */
-	val ONLINE = Regex("^Friend > $NAME (?:joined|left)\\.$")
+	val ONLINE = Regex("^Friend > $NAME (joined|left)\\.$")
 	/** VERIFIED: "You are now friends with [MVP+] Name" */
 	val ADDED = Regex("^You are now friends with $NAME!?$")
 	/** UNVERIFIED: "You removed [VIP] Name from your friends list!" / "[VIP] Name removed you from their friends list!" */
@@ -54,6 +54,12 @@ object FriendTracker {
 	private val friends = LinkedHashMap<String, String>()
 	private var syncedAt = 0L
 
+	/** Lowercase name → where the friend was last seen ("SkyBlock", "Online", "" = offline) and when. */
+	private val status = HashMap<String, Pair<String, Long>>()
+
+	fun statusOf(name: String): String? = status[name.lowercase()]?.first
+	fun statusAge(name: String): Long = status[name.lowercase()]?.let { System.currentTimeMillis() - it.second } ?: Long.MAX_VALUE
+
 	val names: Collection<String> get() = friends.values
 	fun isFriend(name: String) = name.lowercase() in friends
 
@@ -65,7 +71,8 @@ object FriendTracker {
 	private val blockNames = ArrayList<String>()
 
 	// --- quiet sync -------------------------------------------------------------------------------
-	private var syncing = false
+	var syncing = false
+		private set
 	private var syncLoud = false
 	private var syncPage = 0
 	private var nextPageAt = 0L
@@ -78,6 +85,8 @@ object FriendTracker {
 	private var lastLevel: Any? = null
 	private var settleAt = 0L
 	private val inLobby = HashSet<String>()
+	/** Lowercase names of friends on your server right now. */
+	val friendsHere: Set<String> get() = inLobby
 	private var ticks = 0
 
 	/** Tests only: names that count as being in the lobby too (singleplayer has no other players). */
@@ -102,6 +111,7 @@ object FriendTracker {
 		SkypartyCommands.sub {
 			ClientCommands.literal("friends")
 				.executes { describe(); 1 }
+				.then(ClientCommands.literal("menu").executes { Skyparty.openNextTick(FriendsScreen()); 1 })
 				.then(ClientCommands.literal("sync").executes { sync(loud = true); 1 })
 				.then(ClientCommands.literal("add").then(ClientCommands.argument("name", StringArgumentType.word()).executes { c ->
 					val n = StringArgumentType.getString(c, "name")
@@ -127,7 +137,11 @@ object FriendTracker {
 	private fun handleLine(line: String) {
 		if (line.isEmpty()) return
 		if (inBlock) {
-			LIST_ENTRY.matchEntire(line)?.let { blockNames += it.groupValues[1]; return }
+			LIST_ENTRY.matchEntire(line)?.let {
+				blockNames += it.groupValues[1]
+				setStatus(it.groupValues[1], it.groupValues[2].let { s -> if (s == "currently offline") "" else s.removePrefix("in ").removePrefix("a ").removePrefix("an ") })
+				return
+			}
 			endBlock()
 			if (PartyPatterns.SEPARATOR.matches(line)) return
 		}
@@ -143,7 +157,11 @@ object FriendTracker {
 			if (syncing) { syncNames.clear(); finishSync() }
 			return
 		}
-		ONLINE.matchEntire(line)?.let { if (add(it.groupValues[1])) save(); return }
+		ONLINE.matchEntire(line)?.let {
+			setStatus(it.groupValues[1], if (it.groupValues[2] == "joined") "Online" else "")
+			if (add(it.groupValues[1])) save()
+			return
+		}
 		ADDED.matchEntire(line)?.let { if (add(it.groupValues[1])) save(); return }
 		(REMOVED.matchEntire(line) ?: REMOVED_BY.matchEntire(line))?.let { if (friends.remove(it.groupValues[1].lowercase()) != null) save() }
 	}
@@ -159,6 +177,8 @@ object FriendTracker {
 		}
 		if (changed) save()
 	}
+
+	private fun setStatus(name: String, s: String) { status[name.lowercase()] = s to System.currentTimeMillis() }
 
 	private fun add(name: String): Boolean {
 		if (name.equals(Minecraft.getInstance().user.name, ignoreCase = true)) return false
