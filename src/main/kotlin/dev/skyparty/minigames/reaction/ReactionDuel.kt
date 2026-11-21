@@ -149,6 +149,7 @@ class ReactionScreen(val room: LobbyRoom) : GameScreen("Reaction Duel", room) {
 			MinigameStore.submit(ReactionDuel.id, mine.ms.toDouble(), lowerIsBetter = true, display = "${mine.ms} ms")
 		}
 		val over = points.values.any { it >= winPoints } || round >= rounds
+		if (over) dev.skyparty.minigames.Tournament.matchScore(ReactionDuel.id, (points[Net.selfId] ?: 0).toDouble(), false)
 		phase = if (over) Phase.MATCH_END else Phase.ROUND_END
 		if (over && matchWinner() == Net.selfId) MinigameStore.addTokens(15)
 	}

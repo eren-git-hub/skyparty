@@ -173,6 +173,7 @@ class BluffScreen(val room: LobbyRoom) : GameScreen("Bazaar Bluff", room) {
 			rewarded = true
 			MinigameStore.addTokens(if (won) 8 else 2)
 			MinigameStore.submit(BazaarBluff.id, (scores[me] ?: 0).toDouble(), false, "${scores[me] ?: 0} points")
+			dev.skyparty.minigames.Tournament.matchScore(BazaarBluff.id, (scores[me] ?: 0).toDouble(), false)
 		}
 		play(if (won) SoundEvents.PLAYER_LEVELUP else SoundEvents.VILLAGER_NO, 1f)
 	}

@@ -293,9 +293,11 @@ class HubScreen : GameScreen("Skyparty Games") {
 					hint = if (mine.isHost) "Closes this room for everyone" else "Leave this room") { MinigameHub.leave(lobby, mine) }
 			}
 			cy += 13
+			val tour = dev.skyparty.minigames.Tournament.of(lobby, mine)
 			// Space for the buttons below (Ready/Leave + Start) and at least one other room.
-			val rows = ((bottom - 40 - cy) / 10).coerceIn(minOf(mine.joined.size, 3), 8)
-			for ((i, entry) in mine.joined.entries.withIndex()) {
+			// In a tournament the standings list the players, so the list is left out.
+			val rows = if (tour != null) 0 else ((bottom - 40 - cy) / 10).coerceIn(minOf(mine.joined.size, 3), 8)
+			if (tour == null) for ((i, entry) in mine.joined.entries.withIndex()) {
 				if (i >= rows) { g.text(font, "§8+${mine.joined.size - rows} more", x + 4, cy, Theme.TEXT, false); cy += 10; break }
 				val (id, name) = entry
 				val mark = when { id in mine.playing -> "§e▶"; id in mine.ready -> "§a✔"; else -> "§8○" }
@@ -305,7 +307,10 @@ class HubScreen : GameScreen("Skyparty Games") {
 			}
 			cy += 3
 			val readyCount = mine.ready.size
-			if (!mine.inGame) {
+			if (tour != null) cy = drawTournament(g, lobby, mine, tour, x, cy, w, mx, my)
+			if (tour != null && !mine.inGame) {
+				// The tournament buttons (drawn above) replace Ready / Start.
+			} else if (!mine.inGame) {
 				val bw = (w - 4) / 2
 				button(g, x, cy, bw, 14, if (mine.selfReady) "✔ Ready" else "Ready", mx, my, color = if (mine.selfReady) GameColors.GREEN else 0xFF3A3050.toInt(),
 					hint = if (mine.selfReady) "Click to be not ready" else "Mark yourself ready") { MinigameHub.setReady(lobby, mine, !mine.selfReady) }
@@ -323,6 +328,15 @@ class HubScreen : GameScreen("Skyparty Games") {
 					g.text(font, font.plainSubstrByWidth("§7Waiting for ${mine.hostName}…", bw), x + bw + 6, cy + 3, Theme.TEXT, false)
 				}
 				cy += 17
+				if (mine.isHost) {
+					val enough = mine.joined.size >= 2
+					button(g, x, cy, w, 14, "♛ Tournament (${dev.skyparty.minigames.Tournament.ROUNDS} games)", mx, my,
+						enabled = enough && !CombatGuard.blocked, color = GameColors.GOLD,
+						hint = if (enough) "${dev.skyparty.minigames.Tournament.ROUNDS} random games in a row, points for every placement" else "Needs at least 2 players in the room") {
+						dev.skyparty.minigames.Tournament.create(lobby, mine)
+					}
+					cy += 17
+				}
 			} else {
 				val mineActive = lobby.active?.session == mine.id
 				if (mine.paused) {
@@ -368,6 +382,55 @@ class HubScreen : GameScreen("Skyparty Games") {
 	}
 
 	/** Splits [text] into lines of at most [w] pixels at word boundaries. */
+	/** Tournament box in your room: round, points and (for the host) the next step. Returns the y below it. */
+	private fun drawTournament(
+		g: GuiGraphicsExtractor, lobby: MinigameHub.Lobby, s: MinigameHub.Session, t: dev.skyparty.minigames.Tournament.Tour,
+		x: Int, y: Int, w: Int, mx: Int, my: Int,
+	): Int {
+		var cy = y
+		g.fill(x, cy, x + w, cy + 1, ColorUtil.withAlpha(GameColors.GOLD, 0xA0))
+		cy += 3
+		val head = if (t.finished) "§6§l♛ Tournament over" else "§6§l♛ Tournament §7${t.round + 1}/${t.games.size}"
+		g.text(font, head, x, cy, Theme.TEXT, true)
+		if (s.isHost && !s.inGame) {
+			val label = if (t.finished) "Close" else "Stop"
+			button(g, x + w - 34, cy - 1, 34, 11, label, mx, my, color = GameColors.RED, hint = if (t.finished) "Hide the results" else "Cancel the tournament") {
+				dev.skyparty.minigames.Tournament.stop(lobby, s)
+			}
+		}
+		// Games: done ones grey, the current one highlighted (on hover, to keep the box small).
+		val games = t.games.withIndex().joinToString(" §8› ") { (i, id) ->
+			val n = MinigameRegistry.byId(id)?.name ?: id
+			when { i < t.round -> "§8$n"; i == t.round -> "§e$n"; else -> "§7$n" }
+		}
+		if (hovered(x, cy, w - 36, 10, mx, my)) tooltip(games)
+		cy += 11
+		val st = t.standings()
+		val line = st.withIndex().joinToString("  ") { (i, e) ->
+			val c = when (i) { 0 -> "§6"; 1 -> "§f"; 2 -> "§c"; else -> "§7" }
+			"$c${t.names[e.first] ?: "?"} §e${e.second}"
+		}
+		g.text(font, fit(line, w), x, cy, Theme.TEXT, false)
+		cy += 12
+		if (!t.finished) {
+			val next = MinigameRegistry.byId(t.gameId ?: "")?.name ?: "?"
+			when {
+				s.isHost && !s.inGame -> button(g, x, cy, w, 14, "▶ Start round: $next", mx, my, enabled = !CombatGuard.blocked, color = GameColors.GREEN,
+					hint = "Everyone in the room plays $next") { dev.skyparty.minigames.Tournament.startRound(lobby, s) }
+				s.isHost && t.open -> button(g, x, cy, w, 14, "End round now", mx, my, color = GameColors.GOLD,
+					hint = "Score the round with the results so far (players without one get 0)") { dev.skyparty.minigames.Tournament.endRound(lobby, s) }
+				!s.inGame -> g.text(font, fit("§7Next: §f$next §7– waiting for ${s.hostName}", w), x, cy + 3, Theme.TEXT, false)
+				else -> g.text(font, fit("§7Playing §f$next§7…", w), x, cy + 3, Theme.TEXT, false)
+			}
+			cy += 17
+		} else if (s.isHost && !s.inGame) {
+			button(g, x, cy, w, 14, "♛ New tournament", mx, my, enabled = s.joined.size >= 2 && !CombatGuard.blocked, color = GameColors.GOLD,
+				hint = "Three new random games") { dev.skyparty.minigames.Tournament.create(lobby, s) }
+			cy += 17
+		}
+		return cy
+	}
+
 	private fun wrapLines(text: String, w: Int): List<String> {
 		val out = mutableListOf<String>()
 		var line = ""

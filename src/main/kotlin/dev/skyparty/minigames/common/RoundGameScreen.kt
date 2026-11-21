@@ -65,6 +65,7 @@ abstract class RoundGameScreen(title: String, val room: LobbyRoom, botNames: Lis
 			rewarded = true
 			MinigameStore.addTokens(if (won) 8 else 2)
 			MinigameStore.submit(gameId, mine.toDouble(), false, display(mine))
+			dev.skyparty.minigames.Tournament.matchScore(gameId, mine.toDouble(), false)
 		}
 		return won
 	}

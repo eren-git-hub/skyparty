@@ -221,6 +221,7 @@ class ParkourScreen(val room: LobbyRoom, private val fixedSeed: Long?, private v
 		finishSteps = steps
 		val seconds = steps / ParkourPhysics.STEPS_PER_SECOND.toDouble()
 		newBest = MinigameStore.submit("parkour:$seed", seconds, true, formatTime(steps))
+		if (!daily) dev.skyparty.minigames.Tournament.matchScore(ParkourGame.id, seconds, true)
 		if (newBest) bestGhost = recording.toList()
 		MinigameStore.addTokens(if (room.solo) 3 else 5)
 		finished.putIfAbsent(Net.selfId, steps)

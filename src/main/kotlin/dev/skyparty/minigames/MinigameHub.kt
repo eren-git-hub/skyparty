@@ -168,6 +168,8 @@ object MinigameHub {
 			actions.forEach { it() }
 		}
 		if (tickCount % 40 == 0) syncPartyRoom()
+		partyLobby?.let { Tournament.tick(it) }
+		codeLobby?.let { Tournament.tick(it) }
 		invite?.let { if (System.currentTimeMillis() - it.at > INVITE_TIMEOUT_MS || it.lobby.sessions[it.sessionId] == null) invite = null }
 	}
 
@@ -367,6 +369,12 @@ object MinigameHub {
 		})
 	}
 
+	/** Host: start [s] with exactly these players (tournament rounds skip the ready check). */
+	fun startWith(lobby: Lobby, s: Session, players: Map<UUID, String>) {
+		if (!s.isHost || s.inGame) return
+		lobby.room.send("lobby.start", sid(s.id).apply { add("players", playersJson(players)) })
+	}
+
 	// ------------------------------------------------------------------ messages
 
 	private fun handle(lobby: Lobby, msg: Net.Message) {
@@ -429,6 +437,7 @@ object MinigameHub {
 				for (session in lobby.sessions.values) if (session.isHost) lobby.room.send("lobby.state", stateJson(session))
 			}
 			"lobby.ver" -> if (from != Net.selfId) readVersion(lobby, from, p)
+			"tour.new", "tour.go", "tour.score", "tour.round", "tour.stop" -> Tournament.handle(lobby, s, msg)
 			"lobby.state" -> {
 				val id = p["sid"]?.asString ?: return
 				if (id in lobby.sessions) return
