@@ -21,6 +21,8 @@ const MAX_BODY = 2048;
  *   PUT    /pets/me                 { name, stage, bodyColor, accentColor, visibility }
  *   DELETE /pets/me
  *   GET    /pets?uuids=a,b,c        (max 50) -> { pets: { <uuid>: Pet } }
+ *   POST   /scores                  { game, value, display } (best per day and per week is kept)
+ *   GET    /scores?game=x&period=day|week -> { top: [{ name, value, display, me }], me: { rank, display }, total, resetsIn }
  */
 export default {
 	async fetch(req: Request, env: Env): Promise<Response> {
@@ -114,8 +116,63 @@ async function route(req: Request, env: Env): Promise<Response> {
 		return json({ pets }, 200, { "cache-control": "private, max-age=60" });
 	}
 
+	// ---- leaderboards -------------------------------------------------------------------------
+	if (path === "/scores" && req.method === "POST") {
+		if (await limited(env, [["scorePut", session.uuid]])) return error(429, "rate_limited");
+		const b = await readJson(req);
+		const game = GAMES[b?.game as string];
+		const value = b?.value;
+		if (!game || typeof value !== "number" || !Number.isFinite(value) || value < game.min || value > game.max) return error(400, "bad_score");
+		const display = typeof b.display === "string" ? clean(b.display).slice(0, 24) : String(value);
+		const h = hub(env);
+		const day = h.submitScore(boardKey(b.game, "day"), session.uuid, session.name, value, display, game.lower);
+		const week = h.submitScore(boardKey(b.game, "week"), session.uuid, session.name, value, display, game.lower);
+		return json({ ok: true, day: await day, week: await week });
+	}
+	if (path === "/scores" && req.method === "GET") {
+		if (await limited(env, [["scoreGet", session.uuid]])) return error(429, "rate_limited");
+		const id = url.searchParams.get("game") ?? "";
+		const period = url.searchParams.get("period") === "day" ? "day" : "week";
+		const game = GAMES[id];
+		if (!game) return error(400, "bad_game");
+		const res = await hub(env).topScores(boardKey(id, period), game.lower, 10, session.uuid);
+		return json({ ...res, period, resetsIn: resetsIn(period) }, 200, { "cache-control": "private, max-age=30" });
+	}
+
 	return error(404, "not_found");
 }
+
+/** Games with a leaderboard: whether lower is better and the plausible range (anything outside is refused). */
+const GAMES: Record<string, { lower: boolean; min: number; max: number }> = {
+	daily: { lower: true, min: 3, max: 3600 }, // daily parkour, seconds
+	dungeon: { lower: true, min: 20, max: 7200 }, // seconds
+	reaction: { lower: true, min: 80, max: 5000 }, // ms
+	price: { lower: false, min: 1, max: 1000 }, // streak
+	petrace: { lower: false, min: 1, max: 1_000_000 },
+	bluff: { lower: false, min: 1, max: 10_000 },
+	quiz: { lower: false, min: 1, max: 10_000 },
+	typing: { lower: false, min: 1, max: 10_000 },
+	trader: { lower: false, min: 1, max: 10_000 },
+	fishing: { lower: false, min: 1, max: 10_000 },
+};
+
+const DAY_MS = 86_400_000;
+
+/** "d:<game>:<day>" (UTC day number) or "w:<game>:<week>" (weeks start Monday 00:00 UTC; day 0 was a Thursday). */
+function boardKey(game: string, period: "day" | "week"): string {
+	const day = Math.floor(Date.now() / DAY_MS);
+	return period === "day" ? `d:${game}:${day}` : `w:${game}:${Math.floor((day + 3) / 7)}`;
+}
+
+function resetsIn(period: "day" | "week"): number {
+	const now = Date.now();
+	const day = Math.floor(now / DAY_MS);
+	const end = period === "day" ? (day + 1) * DAY_MS : (Math.floor((day + 3) / 7) + 1) * 7 * DAY_MS - 3 * DAY_MS;
+	return end - now;
+}
+
+/** Text shown to other players: no formatting codes or control characters. */
+const clean = (s: string) => s.replace(/§./g, "").replace(/[\u0000-\u001f\u007f-\u009f]/g, "").trim();
 
 async function readJson(req: Request): Promise<any> {
 	const text = await req.text();

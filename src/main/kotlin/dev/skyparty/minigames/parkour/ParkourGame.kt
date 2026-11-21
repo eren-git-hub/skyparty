@@ -75,7 +75,7 @@ object ParkourGame : Minigame {
 	}
 }
 
-class ParkourScreen(val room: LobbyRoom, private val fixedSeed: Long?) : GameScreen("Parkour Race", room) {
+class ParkourScreen(val room: LobbyRoom, private val fixedSeed: Long?, private val daily: Boolean = false) : GameScreen(if (daily) "Daily Parkour" else "Parkour Race", room) {
 	enum class Phase { WAITING, COUNTDOWN, RUN, FINISHED }
 
 	override fun inProgress() = phase != Phase.FINISHED
@@ -231,7 +231,7 @@ class ParkourScreen(val room: LobbyRoom, private val fixedSeed: Long?) : GameScr
 
 	override fun draw(g: GuiGraphicsExtractor, mouseX: Int, mouseY: Int, partialTick: Float) {
 		simulate()
-		val top = header(g, "Parkour Race", if (room.solo) "seed $seed" else "${room.members.size} racers · seed $seed")
+		val top = header(g, if (daily) "Daily Parkour" else "Parkour Race", if (daily) "today's course" else if (room.solo) "seed $seed" else "${room.members.size} racers · seed $seed")
 		val l = level
 		if (l == null) {
 			centered(g, "Building a beatable course…", width / 2, height / 2, Theme.TEXT)
@@ -514,7 +514,8 @@ class ParkourScreen(val room: LobbyRoom, private val fixedSeed: Long?) : GameScr
 		val by = y + h - 18
 		if (room.solo) {
 			button(g, cx - 84, by, 80, 14, "Retry", mx, my) { reset(); countdownUntil = room.now() + 2000; phase = Phase.COUNTDOWN }
-			button(g, cx + 4, by, 80, 14, "New course", mx, my) { startSolo((1..1_000_000).random().toLong()) }
+			if (daily) button(g, cx + 4, by, 80, 14, "♛ Ranks", mx, my, color = GameColors.GOLD, hint = "Today's times of everyone") { minecraft.gui.setScreen(dev.skyparty.minigames.ui.RanksScreen(dev.skyparty.minigames.DailyChallenge.ID)) }
+			else button(g, cx + 4, by, 80, 14, "New course", mx, my) { startSolo((1..1_000_000).random().toLong()) }
 		} else {
 			if (room.isHost) button(g, cx - 84, by, 80, 14, "Race again", mx, my) { room.send("parkour.start.rng", JsonObject()) }
 			else centered(g, "§7Waiting for the host…", cx - 44, by + 3, Theme.TEXT)

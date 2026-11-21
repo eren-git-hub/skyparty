@@ -10,7 +10,7 @@ import java.nio.file.StandardCopyOption
 
 /**
  * Local, purely cosmetic minigame progress: the fake "Tokens" currency and one highscore per game.
- * Stored in config/skyparty/minigames.json. Nothing here is ever sent anywhere.
+ * Stored in config/skyparty/minigames.json. Finished results also go to [Leaderboards] (tokens never do).
  */
 object MinigameStore {
 	const val START_TOKENS = 100
@@ -93,6 +93,7 @@ object MinigameStore {
 	/** Records [value] if it beats the stored best. Returns true for a new personal best. */
 	fun submit(gameId: String, value: Double, lowerIsBetter: Boolean, display: String): Boolean {
 		ensureLoaded()
+		Leaderboards.report(gameId, value, display)
 		val old = highscores[gameId]
 		val better = old == null || (if (lowerIsBetter) value < old.value else value > old.value)
 		if (better) {

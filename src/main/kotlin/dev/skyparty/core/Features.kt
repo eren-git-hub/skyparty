@@ -18,6 +18,7 @@ object Features {
 		// Parkour registers first so it is at the top of the games list.
 		{ dev.skyparty.minigames.parkour.ParkourGame.init() },
 		{ dev.skyparty.minigames.MinigameHub.init() },
+		{ dev.skyparty.minigames.DailyChallenge.init() },
 		{ dev.skyparty.minigames.chess.ChessGame.init() },
 		{ dev.skyparty.reminders.Reminders.init() },
 		{ dev.skyparty.reminders.PriceAlerts.init() },

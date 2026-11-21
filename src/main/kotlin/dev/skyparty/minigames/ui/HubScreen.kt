@@ -44,7 +44,7 @@ class HubScreen : GameScreen("Skyparty Games") {
 	private fun drawGames(g: GuiGraphicsExtractor, x: Int, y: Int, w: Int, h: Int, mx: Int, my: Int) {
 		listBox = intArrayOf(x, y, w, h)
 		// Dungeon Run first (the newest big game), the rest in registration order.
-		val games = MinigameRegistry.all.sortedByDescending { it.id == dev.skyparty.minigames.dungeon.DungeonRun.id }
+		val games = MinigameRegistry.all.sortedBy { when (it.id) { dev.skyparty.minigames.dungeon.DungeonRun.id -> 0; dev.skyparty.minigames.DailyChallenge.ID -> 1; else -> 2 } }
 		val cardH = 56
 		val gap = 4
 		maxScroll = (games.size * (cardH + gap) - gap - h).coerceAtLeast(0)
@@ -114,7 +114,7 @@ class HubScreen : GameScreen("Skyparty Games") {
 			g.text(font, text, textX, y + 17 + li * 10, Theme.TEXT_DIM, false)
 		}
 		if (lines.size > 2 && hover && mx < textX + textW) tooltip(game.description)
-		val best = MinigameStore.best(game.id)
+		val best = MinigameStore.best(if (game.id == dev.skyparty.minigames.DailyChallenge.ID) "parkour:${dev.skyparty.minigames.DailyChallenge.seed()}" else game.id)
 		val info = if (best != null) "§6Best: ${best.display}  §8$tags" else "§8$tags"
 		g.text(font, fit(info, textW - (infoX - textX)), infoX, y + 41, Theme.TEXT, false)
 
@@ -149,12 +149,14 @@ class HubScreen : GameScreen("Skyparty Games") {
 				if (selected) g.outline(x, y, w, h, Theme.accent(0xC0))
 			} else {
 				val label = if (lobby?.isCode == true) "Invite room" else "With party"
+				val soloOnly = game.maxPlayers <= 1
 				val hint = when {
+					soloOnly -> "Solo only – compare times in the Ranks tab"
 					lobby == null -> "Join a party or create a room code first"
 					lobby.isCode -> "Open a ${game.name} room that everyone in ${lobby.code} can join"
 					else -> "Open a ${game.name} room your party can join (other games can run at the same time)"
 				}
-				button(g, bx, partyY, btnW, 14, label, mx, my, enabled = lobby != null && !blocked, hint = hint) {
+				button(g, bx, partyY, btnW, 14, label, mx, my, enabled = lobby != null && !blocked && !soloOnly, hint = hint) {
 					MinigameHub.hostGame(game)
 				}
 			}

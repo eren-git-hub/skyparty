@@ -29,6 +29,8 @@ export const LIMITS = {
 	petPut: [4, 1 / 15], // per uuid: 4 burst, then one per 15s
 	petGet: [20, 30 / 60], // per uuid: 20 burst, 30/min
 	petGetIp: [60, 60 / 60], // per IP
+	scorePut: [10, 1 / 10], // per uuid: 10 burst, then one per 10s
+	scoreGet: [30, 30 / 60], // per uuid
 } as const satisfies Record<string, readonly [number, number]>;
 
 export type LimitName = keyof typeof LIMITS;
@@ -48,6 +50,15 @@ export class Hub extends DurableObject<Env> {
 			accent INTEGER NOT NULL,
 			visibility TEXT NOT NULL,
 			updated INTEGER NOT NULL
+		)`);
+		ctx.storage.sql.exec(`CREATE TABLE IF NOT EXISTS scores (
+			board TEXT NOT NULL,
+			uuid TEXT NOT NULL,
+			name TEXT NOT NULL,
+			value REAL NOT NULL,
+			display TEXT NOT NULL,
+			at INTEGER NOT NULL,
+			PRIMARY KEY (board, uuid)
 		)`);
 	}
 
@@ -131,4 +142,37 @@ export class Hub extends DurableObject<Env> {
 		}
 		return out;
 	}
+
+	/** Keeps the better of the stored and the new score; writes only when it improved. Returns whether it did. */
+	submitScore(board: string, uuid: string, name: string, value: number, display: string, lower: boolean): boolean {
+		const sql = this.ctx.storage.sql;
+		const row = sql.exec("SELECT value FROM scores WHERE board = ? AND uuid = ?", board, uuid).toArray()[0];
+		if (row && (lower ? value >= (row.value as number) : value <= (row.value as number))) return false;
+		const now = Date.now();
+		sql.exec("INSERT OR REPLACE INTO scores (board, uuid, name, value, display, at) VALUES (?, ?, ?, ?, ?, ?)", board, uuid, name, value, display, now);
+		// Now and then: old boards (older than 3 weeks) go.
+		if (Math.random() < 0.02) sql.exec("DELETE FROM scores WHERE at < ?", now - 21 * 86_400_000);
+		return true;
+	}
+
+	/** The best [limit] entries of a board, plus your own entry and rank. */
+	topScores(board: string, lower: boolean, limit: number, self: string) {
+		const sql = this.ctx.storage.sql;
+		const order = lower ? "ASC" : "DESC";
+		const top = sql
+			.exec(`SELECT uuid, name, value, display FROM scores WHERE board = ? ORDER BY value ${order}, at ASC LIMIT ?`, board, limit)
+			.toArray()
+			.map((r) => ({ name: r.name as string, value: r.value as number, display: r.display as string, me: r.uuid === self }));
+		const mine = sql.exec("SELECT value, display FROM scores WHERE board = ? AND uuid = ?", board, self).toArray()[0];
+		let me = null;
+		if (mine) {
+			const better = sql
+				.exec(`SELECT COUNT(*) AS n FROM scores WHERE board = ? AND value ${lower ? "<" : ">"} ?`, board, mine.value)
+				.toArray()[0].n as number;
+			me = { rank: better + 1, display: mine.display as string };
+		}
+		const total = sql.exec("SELECT COUNT(*) AS n FROM scores WHERE board = ?", board).toArray()[0].n as number;
+		return { top, me, total };
+	}
 }
+

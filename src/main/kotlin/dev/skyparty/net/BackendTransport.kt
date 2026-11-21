@@ -313,6 +313,13 @@ object BackendTransport : Net.Transport {
 	/** PUT /pets/me. Blocking; use through [api]. */
 	fun putPet(token: String, pet: JsonObject): JsonObject = postJson("/pets/me", pet, token, "PUT")
 
+	/** POST /scores. Blocking; use through [api]. */
+	fun postScore(token: String, body: JsonObject): JsonObject = postJson("/scores", body, token)
+
+	/** GET /scores?game=…&period=day|week. Blocking; use through [api]. */
+	fun getScores(token: String, game: String, period: String): JsonObject =
+		getJson("/scores?game=${URLEncoder.encode(game, StandardCharsets.UTF_8)}&period=$period", token)
+
 	/** GET /pets?uuids=… (max 50). Blocking; use through [api]. */
 	fun getPets(token: String, uuids: Collection<UUID>): JsonObject {
 		val q = URLEncoder.encode(uuids.joinToString(",") { it.toString() }, StandardCharsets.UTF_8)
