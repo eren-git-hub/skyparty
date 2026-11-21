@@ -106,7 +106,8 @@ object CatEars {
 			}
 			pose.popPose()
 
-			// ---- tail: from the lower back, curling up and swaying
+			// ---- tail: from the lower back, curling up and swaying (not while lying on the back, it would poke out flat)
+			if (cp.drawn?.emote != dev.skyparty.emote.Emotes.Emote.SLEEP) {
 			pose.pushPose()
 			if (crouch) {
 				pose.px(0f, 8.4f, -4.6f)
@@ -124,6 +125,7 @@ object CatEars {
 				pose.mulPose(Axis.YP.rotationDegrees(sin(time * 0.09f - (i + 1) * 0.7f) * 14f))
 			}
 			pose.popPose()
+			}
 
 			pose.popPose()
 		}

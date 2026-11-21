@@ -42,6 +42,9 @@ object Emotes {
 	var startYaw = 0f
 		private set
 
+	/** Third person we switched to for the emote (null = we did not switch, leave the camera alone). */
+	private var autoCamera: net.minecraft.client.CameraType? = null
+
 	private class Remote(val emote: Emote, val yaw: Float, val since: Long)
 	private val remote = HashMap<UUID, Remote>()
 
@@ -99,6 +102,12 @@ object Emotes {
 			Chat.info("§7Stand still on the ground to use an emote.")
 			return
 		}
+		// See yourself: go to third person for the emote, back to first person afterwards.
+		val opts = Minecraft.getInstance().options
+		if (active == null && EmotesModule.autoThirdPerson.value && opts.cameraType.isFirstPerson) {
+			opts.cameraType = net.minecraft.client.CameraType.THIRD_PERSON_BACK
+			autoCamera = opts.cameraType
+		}
 		active = emote
 		startPos = p.position()
 		startedAt = System.currentTimeMillis()
@@ -110,12 +119,20 @@ object Emotes {
 		if (active == null) return
 		active = null
 		startPos = null
+		restoreCamera()
 		broadcast()
+	}
+
+	/** Back to first person, unless you changed the view yourself (F5) during the emote. */
+	private fun restoreCamera() {
+		val opts = Minecraft.getInstance().options
+		if (autoCamera != null && opts.cameraType == autoCamera) opts.cameraType = net.minecraft.client.CameraType.FIRST_PERSON
+		autoCamera = null
 	}
 
 	fun tick(mc: Minecraft) {
 		val p = mc.player
-		if (p == null) { active = null; remote.clear(); return }
+		if (p == null) { active = null; autoCamera = null; remote.clear(); return }
 		Campfire.tick(mc)
 		particles(mc)
 		if (active == null) return

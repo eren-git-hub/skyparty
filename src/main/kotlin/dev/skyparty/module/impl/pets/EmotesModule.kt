@@ -11,5 +11,6 @@ object EmotesModule : Module(
 	defaultEnabled = true,
 ) {
 	val showOthers = boolean("Show Others' Emotes", true)
+	val autoThirdPerson = boolean("Auto Third Person", true, "Switch to third person during an emote and back afterwards")
 	val chairColor = color("Chair Color", 0xFF2F5FB3.toInt(), allowAlpha = false)
 }
