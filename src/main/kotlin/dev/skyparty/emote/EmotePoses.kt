@@ -121,11 +121,11 @@ object EmotePoses {
 		when (d.emote) {
 			Emote.CHAIR -> {
 				// Legs stretched out towards the ground (the body leans back, so the angle is relative),
-				// hands up behind the head. The arms stay beside the head (no inward swing through it) and a little
-				// in front of straight up, so they do not sink into the backrest.
+				// hands crossed behind the head: arms up and tilted back past the head, then inwards so the hands
+				// cross behind it (above the top of the backrest, so nothing cuts through).
 				leg(m, -0.80f, 0.12f)
-				m.rightArm.xRot = -2.9f; m.rightArm.yRot = 0f; m.rightArm.zRot = 0.1f
-				m.leftArm.xRot = -2.9f; m.leftArm.yRot = 0f; m.leftArm.zRot = -0.1f
+				m.rightArm.xRot = -3.6f; m.rightArm.yRot = 0f; m.rightArm.zRot = 0.78f
+				m.leftArm.xRot = -3.6f; m.leftArm.yRot = 0f; m.leftArm.zRot = -0.78f
 			}
 			Emote.WAVE -> {
 				m.rightArm.xRot = -0.2f
