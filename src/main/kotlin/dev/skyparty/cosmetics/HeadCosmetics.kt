@@ -96,14 +96,14 @@ object HeadCosmetics {
 			val fur = colors?.first ?: FUR
 			val inner = colors?.second ?: INNER
 
+			val cp = dev.skyparty.emote.EmotePoses.cosmetic(player, bodyYaw, headYaw, pitch)
 			pose.pushPose()
 			pose.translate(pos.x - cam.x, pos.y - cam.y, pos.z - cam.z)
-			pose.mulPose(Axis.YP.rotationDegrees(-bodyYaw))
+			cp.body(pose)
 			pose.scale(0.9375f, 0.9375f, 0.9375f) // players are drawn at 15/16 size
 			// Follow the head: neck pivot at 24 px (sneaking lowers the head).
-			pose.px(0f, if (player.isCrouching) 17.7f else 24f, 0f)
-			pose.mulPose(Axis.YP.rotationDegrees(-(headYaw - bodyYaw)))
-			pose.mulPose(Axis.XP.rotationDegrees(pitch))
+			pose.px(0f, if (cp.crouching(player)) 17.7f else 24f, 0f)
+			cp.head(pose)
 
 			if (horns) for (side in listOf(-1f, 1f)) {
 				pose.pushPose()

@@ -80,19 +80,19 @@ object CatEars {
 			val time = player.tickCount + partial
 			val light = lightAt(level, BlockPos.containing(pos.x, pos.y + 1.6, pos.z))
 			val pose = ctx.poseStack()
-			val crouch = player.isCrouching
+			val cp = dev.skyparty.emote.EmotePoses.cosmetic(player, bodyYaw, headYaw, pitch)
+			val crouch = cp.crouching(player)
 
 			pose.pushPose()
 			pose.translate(pos.x - cam.x, pos.y - cam.y, pos.z - cam.z)
-			pose.mulPose(Axis.YP.rotationDegrees(-bodyYaw))
+			cp.body(pose)
 			// Players are drawn at 15/16 size.
 			pose.scale(0.9375f, 0.9375f, 0.9375f)
 
 			// ---- ears: follow the head (neck pivot at 24 px; sneaking lowers the head 4.2 px and the whole player 2 px)
 			pose.pushPose()
 			pose.px(0f, if (crouch) 17.7f else 24f, 0f)
-			pose.mulPose(Axis.YP.rotationDegrees(-(headYaw - bodyYaw)))
-			pose.mulPose(Axis.XP.rotationDegrees(pitch))
+			cp.head(pose)
 			val twitch = if ((time / 50).toInt() % 4 == 0) sin(time * 1.4f) * 8f else 0f
 			for (side in listOf(-1f, 1f)) {
 				pose.pushPose()

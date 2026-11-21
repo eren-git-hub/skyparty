@@ -113,15 +113,17 @@ object DragonWings {
 			val time = player.tickCount + partial
 			// Always the same calm idle sway: no flapping while falling or flying, no folding while sneaking.
 			val flap = sin(time * 0.12f) * 0.18f
-			val spread = 0.45f
+			val cp = dev.skyparty.emote.EmotePoses.cosmetic(player, bodyYaw, bodyYaw, 0f)
+			// Sitting in the beach chair or lying down: wings open to the sides instead of into the chair / the ground.
+			val spread = when (cp.drawn?.emote) { dev.skyparty.emote.Emotes.Emote.CHAIR -> 0.0f; dev.skyparty.emote.Emotes.Emote.SLEEP -> -0.1f; else -> 0.45f }
 			val light = lightAt(level, BlockPos.containing(pos.x, pos.y + 1.2, pos.z))
 
 			val pose = ctx.poseStack()
 			pose.pushPose()
 			pose.translate(pos.x - cam.x, pos.y - cam.y, pos.z - cam.z)
-			pose.mulPose(Axis.YP.rotationDegrees(-bodyYaw))
+			cp.body(pose)
 			// Attach to the upper back (lower and tilted forward while sneaking).
-			if (player.isCrouching) {
+			if (cp.crouching(player)) {
 				pose.translate(0.0, 19.0 / 16, -3.5 / 16)
 				pose.mulPose(Axis.XP.rotationDegrees(28f))
 			} else pose.translate(0.0, 22.0 / 16, -2.6 / 16)
