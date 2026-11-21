@@ -86,7 +86,27 @@ object Emotes {
 			for (e in Emote.entries) root.then(ClientCommands.literal(e.id).executes { later { toggle(e) }; 1 })
 			root.then(ClientCommands.literal("campfire").executes { later { Campfire.toggle() }; 1 })
 			root.then(ClientCommands.literal("stop").executes { stop(); 1 })
+			root.then(ClientCommands.literal("debug").executes { debug(); 1 })
 		}
+	}
+
+	/** Why others' emotes may not show: lobby room, who in it has Skyparty, which emotes arrived. */
+	private fun debug() {
+		val room = dev.skyparty.pet.RemotePets.lobbyRoom
+		if (room == null) {
+			Chat.info("§cNot in a lobby room: ${if (!Net.transport.connected) "Online features are off or not connected" else "no server id found on the sidebar"}.")
+			return
+		}
+		val names = room.memberNames.filterKeys { it != Net.selfId }.values.ifEmpty { listOf("§7nobody else") }
+		Chat.info("§7Room §f${room.id}§7, Skyparty players here: §f${names.joinToString(", ")}")
+		val level = Minecraft.getInstance().level
+		if (remote.isEmpty()) Chat.info("§7No emotes received in this lobby yet.")
+		for ((uuid, r) in remote) {
+			val name = room.memberNames[uuid] ?: uuid.toString().take(8)
+			val seen = level?.getPlayerByUUID(uuid) != null
+			Chat.info("§7$name: §f${r.emote.label}§7, ${if (seen) "in view" else "§cnot in view"}")
+		}
+		if (!EmotesModule.showOthers.value) Chat.info("§c\"Show Others' Emotes\" is off in the Emotes settings.")
 	}
 
 	/** After the chat screen (which ran the command) has closed, so the key check does not end it at once. */
