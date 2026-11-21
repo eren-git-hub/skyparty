@@ -130,7 +130,7 @@ object RemotePets {
 				)
 			}.onFailure { log.debug("Bad pet.info from {}", msg.fromName) }
 			"pet.hide" -> infos.remove(msg.from)
-			"emote" -> dev.skyparty.emote.Emotes.onMessage(msg)
+			"emote", "camp" -> dev.skyparty.emote.Emotes.onMessage(msg)
 		}
 	}
 

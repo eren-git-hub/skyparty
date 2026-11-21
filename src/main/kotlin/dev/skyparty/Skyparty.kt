@@ -41,6 +41,7 @@ object Skyparty : ClientModInitializer {
 	lateinit var feedPetKey: KeyMapping
 		private set
 	private lateinit var chairKey: KeyMapping
+	private lateinit var wheelKey: KeyMapping
 
 	/** Screen to open on the next tick (commands run while the chat screen is still closing). */
 	private var pendingScreen: Screen? = null
@@ -57,6 +58,9 @@ object Skyparty : ClientModInitializer {
 		feedPetKey = KeyMappingHelper.registerKeyMapping(
 			KeyMapping("key.skyparty.feed_pet", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_G, category)
 		)
+		wheelKey = KeyMappingHelper.registerKeyMapping(
+			KeyMapping("key.skyparty.emote_wheel", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_B, category)
+		)
 		chairKey = KeyMappingHelper.registerKeyMapping(
 			KeyMapping("key.skyparty.emote_chair", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_UNKNOWN, category)
 		)
@@ -72,6 +76,8 @@ object Skyparty : ClientModInitializer {
 		LevelRenderEvents.COLLECT_SUBMITS.register(PetRenderer::render)
 		LevelRenderEvents.COLLECT_SUBMITS.register(dev.skyparty.cosmetics.DragonWings::render)
 		LevelRenderEvents.COLLECT_SUBMITS.register(dev.skyparty.emote.ChairRenderer::render)
+		LevelRenderEvents.COLLECT_SUBMITS.register(dev.skyparty.emote.Campfire::render)
+		LevelRenderEvents.COLLECT_SUBMITS.register(dev.skyparty.emote.SleepZs::render)
 		LevelRenderEvents.COLLECT_SUBMITS.register(dev.skyparty.cosmetics.CatEars::render)
 		LevelRenderEvents.COLLECT_SUBMITS.register(dev.skyparty.cosmetics.HeadCosmetics::render)
 		HudElementRegistry.attachElementAfter(
@@ -139,6 +145,7 @@ object Skyparty : ClientModInitializer {
 		while (openGuiKey.consumeClick()) {
 			if (mc.gui.screen() == null) mc.gui.setScreen(dev.skyparty.minigames.MinigameHub.mainScreen())
 		}
+		while (wheelKey.consumeClick()) if (mc.gui.screen() == null) mc.gui.setScreen(dev.skyparty.emote.EmoteWheelScreen(KeyMappingHelper.getBoundKeyOf(wheelKey).value))
 		while (chairKey.consumeClick()) if (mc.gui.screen() == null) dev.skyparty.emote.Emotes.toggle(dev.skyparty.emote.Emotes.Emote.CHAIR)
 		dev.skyparty.emote.Emotes.tick(mc)
 		dev.skyparty.util.FocusGuard.tick(mc)

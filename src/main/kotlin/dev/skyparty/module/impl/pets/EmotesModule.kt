@@ -6,7 +6,7 @@ import dev.skyparty.module.Module
 object EmotesModule : Module(
 	id = "emotes",
 	name = "Emotes",
-	description = "Visual emotes like the folding chair (/sp sit or a key in Controls). Others with Skyparty see them.",
+	description = "Visual emotes: hold B for the emote wheel (or /sp emote). Others with Skyparty see them.",
 	category = Category.PETS,
 	defaultEnabled = true,
 ) {

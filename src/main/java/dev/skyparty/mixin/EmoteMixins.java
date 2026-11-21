@@ -1,7 +1,9 @@
 package dev.skyparty.mixin;
 
-import dev.skyparty.emote.ChairRenderer;
+import com.mojang.blaze3d.vertex.PoseStack;
+import dev.skyparty.emote.EmotePoses;
 import dev.skyparty.emote.Emotes;
+import net.minecraft.client.model.player.PlayerModel;
 import net.minecraft.client.renderer.entity.player.AvatarRenderer;
 import net.minecraft.client.renderer.entity.state.AvatarRenderState;
 import net.minecraft.util.Mth;
@@ -14,27 +16,52 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-/** Emotes (see Emotes): sitting players are drawn in the riding pose, lower and facing their chair. Visual only. */
-@Mixin(AvatarRenderer.class)
-public abstract class EmoteMixins {
-	@Inject(method = "extractRenderState(Lnet/minecraft/world/entity/Avatar;Lnet/minecraft/client/renderer/entity/state/AvatarRenderState;F)V", at = @At("TAIL"))
-	private void skyparty$emotePose(Avatar entity, AvatarRenderState state, float partialTick, CallbackInfo ci) {
-		if (!(entity instanceof Player player) || !Emotes.isSitting(player)) {
-			Emotes.sittingIds.remove(state.id);
-			return;
+/** Emotes (see Emotes and EmotePoses): pose, body transform and height of players doing an emote. Visual only. */
+public final class EmoteMixins {
+	private EmoteMixins() {}
+
+	@Mixin(AvatarRenderer.class)
+	public abstract static class Renderer {
+		@Inject(method = "extractRenderState(Lnet/minecraft/world/entity/Avatar;Lnet/minecraft/client/renderer/entity/state/AvatarRenderState;F)V", at = @At("TAIL"))
+		private void skyparty$emoteState(Avatar entity, AvatarRenderState state, float partialTick, CallbackInfo ci) {
+			Emotes.Emote emote = entity instanceof Player player ? Emotes.INSTANCE.emoteOf(player) : null;
+			if (emote == null) {
+				Emotes.drawn.remove(state.id);
+				return;
+			}
+			Player player = (Player) entity;
+			Emotes.drawn.put(state.id, new Emotes.Drawn(emote, Emotes.INSTANCE.ageOf(player)));
+			state.isCrouching = false;
+			state.isPassenger = false;
+			state.walkAnimationSpeed = 0f;
+			float head = state.bodyRot + state.yRot;
+			float yaw = Emotes.INSTANCE.yawOf(player, state.bodyRot);
+			state.bodyRot = yaw;
+			state.yRot = Mth.clamp(Mth.wrapDegrees(head - yaw), -80f, 80f);
 		}
-		Emotes.sittingIds.add(state.id);
-		state.isPassenger = true;
-		state.isCrouching = false;
-		float head = state.bodyRot + state.yRot;
-		float yaw = Emotes.INSTANCE.yawOf(player, state.bodyRot);
-		state.bodyRot = yaw;
-		state.yRot = Mth.clamp(Mth.wrapDegrees(head - yaw), -80f, 80f);
-		state.walkAnimationSpeed = 0f;
+
+		@Inject(method = "getRenderOffset(Lnet/minecraft/client/renderer/entity/state/AvatarRenderState;)Lnet/minecraft/world/phys/Vec3;", at = @At("RETURN"), cancellable = true)
+		private void skyparty$emoteOffset(AvatarRenderState state, CallbackInfoReturnable<Vec3> cir) {
+			Emotes.Drawn d = Emotes.drawn.get(state.id);
+			if (d != null) {
+				double drop = EmotePoses.drop(d.emote);
+				if (drop != 0) cir.setReturnValue(cir.getReturnValue().add(0, -drop, 0));
+			}
+		}
+
+		@Inject(method = "setupRotations(Lnet/minecraft/client/renderer/entity/state/AvatarRenderState;Lcom/mojang/blaze3d/vertex/PoseStack;FF)V", at = @At("TAIL"))
+		private void skyparty$emoteBody(AvatarRenderState state, PoseStack pose, float bodyRot, float scale, CallbackInfo ci) {
+			Emotes.Drawn d = Emotes.drawn.get(state.id);
+			if (d != null) EmotePoses.body(pose, d);
+		}
 	}
 
-	@Inject(method = "getRenderOffset(Lnet/minecraft/client/renderer/entity/state/AvatarRenderState;)Lnet/minecraft/world/phys/Vec3;", at = @At("RETURN"), cancellable = true)
-	private void skyparty$emoteOffset(AvatarRenderState state, CallbackInfoReturnable<Vec3> cir) {
-		if (Emotes.sittingIds.contains(state.id)) cir.setReturnValue(cir.getReturnValue().add(0, -ChairRenderer.SIT_DROP, 0));
+	@Mixin(PlayerModel.class)
+	public abstract static class Model {
+		@Inject(method = "setupAnim(Lnet/minecraft/client/renderer/entity/state/AvatarRenderState;)V", at = @At("TAIL"))
+		private void skyparty$emoteLimbs(AvatarRenderState state, CallbackInfo ci) {
+			Emotes.Drawn d = Emotes.drawn.get(state.id);
+			if (d != null) EmotePoses.arms((PlayerModel) (Object) this, d);
+		}
 	}
 }
