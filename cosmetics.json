@@ -4,7 +4,7 @@
 	"horns": [],
 	"bunny_ears": ["daichoo", "siasow"],
 	"ranks": {
-		"LARP": { "tag": "&b[LARP&1++&b]", "players": ["exlusiv"] },
+		"LARP": { "tag": "&b[LARP&1++&b]", "players": ["exlusiv", "mutsiri"] },
 		"BUM": { "tag": "&6[Bum++]", "players": ["daichoo"] },
 		"HELIX": { "tag": "&a[HELIX++]", "players": ["littlevoidling_"] }
 	}
