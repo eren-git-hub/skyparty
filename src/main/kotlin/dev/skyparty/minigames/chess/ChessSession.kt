@@ -16,7 +16,7 @@ import kotlin.random.Random
  *  - "chess.move" {uci, ply, left: mover's remaining ms or -1}: applied only if ply matches, the sender
  *    owns the side to move and the move is legal.
  *  - "chess.resign", "chess.draw.offer", "chess.draw.accept", "chess.draw.decline".
- *  - "chess.flag" {white}: a clock hit zero (accepted if the local clock agrees within a tolerance).
+ *  - "chess.flag" {white}: a clock hit zero (accepted if that side is still to move, so every client agrees).
  *  - "chess.claim": win claim after the opponent left the room for [CLAIM_TIMEOUT_MS].
  */
 class ChessSession(val room: Net.Room?, val mode: Mode, val settings: Settings) {
@@ -169,8 +169,8 @@ class ChessSession(val room: Net.Room?, val mode: Mode, val settings: Settings) 
 		if (st.over) return
 		when (mode) {
 			Mode.ONLINE -> room?.send("chess.resign")
-			Mode.AI -> st.end(Result(aiWhite, "Resignation"))
-			Mode.HOTSEAT -> st.end(Result(!st.pos.whiteToMove, "Resignation"))
+			Mode.AI -> finish(st, Result(aiWhite, "Resignation"))
+			Mode.HOTSEAT -> finish(st, Result(!st.pos.whiteToMove, "Resignation"))
 		}
 	}
 
@@ -183,7 +183,7 @@ class ChessSession(val room: Net.Room?, val mode: Mode, val settings: Settings) 
 				// The AI accepts when it thinks it's worse (eval from its own point of view).
 				val p = st.pos.copy()
 				val eval = ChessAI.evaluate(p).let { if (p.whiteToMove == aiWhite) it else -it }
-				if (eval < -150) st.end(Result(null, "Draw by agreement")) else toast("The AI declines the draw.")
+				if (eval < -150) finish(st, Result(null, "Draw by agreement")) else toast("The AI declines the draw.")
 			}
 			Mode.HOTSEAT -> drawOfferWhite = st.pos.whiteToMove
 		}
@@ -201,7 +201,7 @@ class ChessSession(val room: Net.Room?, val mode: Mode, val settings: Settings) 
 
 	fun acceptDraw() {
 		if (!canAcceptDraw) return
-		if (online) room?.send("chess.draw.accept") else state?.end(Result(null, "Draw by agreement"))
+		if (online) room?.send("chess.draw.accept") else state?.let { finish(it, Result(null, "Draw by agreement")) }
 	}
 
 	fun declineDraw() {
@@ -240,6 +240,20 @@ class ChessSession(val room: Net.Room?, val mode: Mode, val settings: Settings) 
 		return clockMs > 0 && !st.over && st.pos.whiteToMove == white && st.ply >= 1
 	}
 
+	/**
+	 * Ends the game and stops the clocks where they are (otherwise the running clock would jump back to
+	 * the time it had when the turn started). A flagged side shows 0:00.
+	 */
+	private fun finish(st: ChessState, r: Result, flagged: Boolean? = null) {
+		if (st.over) return
+		if (clockMs > 0 && st.ply >= 1) {
+			val w = st.pos.whiteToMove
+			val t = if (flagged == w) 0L else remaining(w)
+			if (w) whiteMs = t else blackMs = t
+		}
+		st.end(r)
+	}
+
 	private fun flagResult(white: Boolean, st: ChessState): Result =
 		if (st.pos.hasMatingMaterial(!white)) Result(!white, "Time out") else Result(null, "Time out vs. insufficient material")
 
@@ -255,6 +269,7 @@ class ChessSession(val room: Net.Room?, val mode: Mode, val settings: Settings) 
 		}
 		if (!st.play(m)) return
 		turnStart = now
+		flagSent = false
 		// A move answers (declines) a pending draw offer from the opponent.
 		if (drawOfferWhite != null && drawOfferWhite != moverWhite) drawOfferWhite = null
 		moveCounter++
@@ -275,7 +290,7 @@ class ChessSession(val room: Net.Room?, val mode: Mode, val settings: Settings) 
 							val p = JsonObject(); p.addProperty("white", white)
 							room?.send("chess.flag", p)
 						}
-					} else st.end(flagResult(white, st))
+					} else finish(st, flagResult(white, st), flagged = white)
 				}
 			}
 		}
@@ -358,7 +373,7 @@ class ChessSession(val room: Net.Room?, val mode: Mode, val settings: Settings) 
 				val st = state ?: return
 				if (st.over) return
 				val c = colorOf(msg.from, st) ?: return
-				st.end(Result(!c, "Resignation"))
+				finish(st, Result(!c, "Resignation"))
 			}
 			"chess.draw.offer" -> {
 				val st = state ?: return
@@ -371,7 +386,7 @@ class ChessSession(val room: Net.Room?, val mode: Mode, val settings: Settings) 
 				val offer = drawOfferWhite ?: return
 				val c = colorOf(msg.from, st) ?: return
 				if (st.over) return
-				if (whiteId == blackId || c != offer) st.end(Result(null, "Draw by agreement"))
+				if (whiteId == blackId || c != offer) finish(st, Result(null, "Draw by agreement"))
 			}
 			"chess.draw.decline" -> {
 				val st = state ?: return
@@ -386,20 +401,24 @@ class ChessSession(val room: Net.Room?, val mode: Mode, val settings: Settings) 
 				val st = state ?: return
 				if (st.over || clockMs <= 0) return
 				val white = p.get("white")?.asBoolean ?: return
-				if (remaining(white) <= FLAG_TOLERANCE_MS) st.end(flagResult(white, st))
+				// Decided only by the game state, never by the local clock: both clients see the same messages in
+				// the same order, so both end the game (a check against each one's own clock could end it on one
+				// screen only, and then the rematch of that player was ignored by the other: a broken room).
+				// A move that got in first means the flag is too late (that side is no longer to move).
+				if (st.ply < 1 || st.pos.whiteToMove != white) return
+				finish(st, flagResult(white, st), flagged = white)
 			}
 			"chess.claim" -> {
 				val st = state ?: return
 				if (st.over) return
 				val c = colorOf(msg.from, st) ?: return
 				val opp = if (c) blackId else whiteId
-				if (opp != null && opp != msg.from && room?.members?.contains(opp) == false) st.end(Result(c, "Opponent left"))
+				if (opp != null && opp != msg.from && room?.members?.contains(opp) == false) finish(st, Result(c, "Opponent left"))
 			}
 		}
 	}
 
 	companion object {
 		const val CLAIM_TIMEOUT_MS = 60_000L
-		const val FLAG_TOLERANCE_MS = 3_000L
 	}
 }

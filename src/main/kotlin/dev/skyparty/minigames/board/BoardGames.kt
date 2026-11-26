@@ -187,7 +187,9 @@ class GridScreen(val game: GridGame, val room: LobbyRoom) : GameScreen(game.name
 	private var p1: UUID? = null
 	private var p2: UUID? = null
 
-	private val score = IntArray(3)
+	/** Wins per player (null = the AI). Colors are drawn again every round, so the score belongs to the player, not the piece. */
+	private val score = HashMap<UUID?, Int>()
+	private fun idOf(piece: Int): UUID? = if (piece == 1) p1 else p2
 	override fun inProgress() = started && winner == 0
 
 	init {
@@ -272,7 +274,7 @@ class GridScreen(val game: GridGame, val room: LobbyRoom) : GameScreen(game.name
 	}
 
 	private fun onGameOver() {
-		if (winner in 1..2) score[winner]++
+		if (winner in 1..2) idOf(winner).let { score[it] = (score[it] ?: 0) + 1 }
 		val won = winner == myPiece
 		val sound = if (won) SoundEvents.PLAYER_LEVELUP else if (winner == 3) SoundEvents.NOTE_BLOCK_PLING.value() else SoundEvents.VILLAGER_NO
 		Minecraft.getInstance().soundManager.play(SimpleSoundInstance.forUI(sound, 1f))
@@ -409,7 +411,7 @@ class GridScreen(val game: GridGame, val room: LobbyRoom) : GameScreen(game.name
 			if (winner == 0 && turn == p) g.fill(x + 3, ry - 3, x + w - 3, ry + 11, 0x30FFFFFF)
 			if (rules.gravity) disc(g, x + 11, ry + 4, 4, c) else g.text(font, if (p == 1) "X" else "O", x + 8, ry, c, true)
 			g.text(font, font.plainSubstrByWidth(nameOfPiece(p), 70), x + 20, ry, Theme.TEXT, false)
-			val s = score[p].toString()
+			val s = (score[idOf(p)] ?: 0).toString()
 			g.text(font, s, x + w - 8 - font.width(s), ry, GameColors.GOLD, false)
 		}
 		val status = when {
