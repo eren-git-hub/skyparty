@@ -6,7 +6,7 @@ import dev.skyparty.module.Module
 object FriendAlerts : Module(
 	id = "friend_alerts",
 	name = "Friends",
-	description = "Friend in lobby alerts, the friends list in the menu and the ✦ next to Skyparty players.",
+	description = "Friend in lobby alerts and the ✦ next to Skyparty players.",
 	category = Category.PARTY,
 	defaultEnabled = true,
 ) {

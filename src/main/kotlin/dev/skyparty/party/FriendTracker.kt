@@ -33,10 +33,13 @@ import java.nio.file.StandardCopyOption
 object FriendTracker {
 	private const val NAME = "(?:\\[[^\\]]{1,20}] )?([A-Za-z0-9_]{1,16})"
 
-	/** UNVERIFIED: "<< Friends (Page 1 of 3) >>" (arrows only where there is another page). */
+	/** VERIFIED: "Friends (Page 1 of 5) >>" (arrows only where there is another page). */
 	val LIST_HEADER = Regex("^[<\\s]*Friends \\(Page (\\d+) of (\\d+)\\)[>\\s]*$")
-	/** UNVERIFIED: "[MVP+] Name is in SkyBlock" / "Name is currently offline" / "Name is in an unknown realm". */
-	val LIST_ENTRY = Regex("^$NAME is (currently offline|.+)$")
+	/**
+	 * VERIFIED: "rend* is in SkyBlock - Moonglade Marsh" / "Axdra is currently offline" (rank only as the name color,
+	 * a "*" after best friends). A rank tag in front is still accepted.
+	 */
+	val LIST_ENTRY = Regex("^$NAME\\*? is (currently offline|.+)$")
 	/** UNVERIFIED: reply to /f list without friends. */
 	val NO_FRIENDS = Regex("^You don't have any friends.*$")
 	/** VERIFIED: "Friend > Name joined." / "Friend > Name left." */
@@ -116,7 +119,6 @@ object FriendTracker {
 		SkypartyCommands.sub {
 			ClientCommands.literal("friends")
 				.executes { describe(); 1 }
-				.then(ClientCommands.literal("menu").executes { Skyparty.openNextTick(FriendsScreen()); 1 })
 				.then(ClientCommands.literal("sync").executes { sync(loud = true); 1 })
 				.then(ClientCommands.literal("add").then(ClientCommands.argument("name", StringArgumentType.word()).executes { c ->
 					val n = StringArgumentType.getString(c, "name")
@@ -147,8 +149,11 @@ object FriendTracker {
 				setStatus(it.groupValues[1], it.groupValues[2].let { s -> if (s == "currently offline") "" else s.removePrefix("idle ").removePrefix("in ").removePrefix("a ").removePrefix("an ") })
 				return
 			}
+			// Only the closing dash line (or a new page) ends a page: a line we do not know is skipped, so one
+			// odd entry can never end the page early and wipe the list during a sync.
+			if (PartyPatterns.SEPARATOR.matches(line)) { endBlock(); return }
+			if (!LIST_HEADER.matches(line)) return
 			endBlock()
-			if (PartyPatterns.SEPARATOR.matches(line)) return
 		}
 		LIST_HEADER.matchEntire(line)?.let {
 			inBlock = true
