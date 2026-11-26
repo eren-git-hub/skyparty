@@ -300,10 +300,17 @@ class DungeonScreen(val room: LobbyRoom) : GameScreen("Dungeon Run", room) {
 		}, "Skyparty-DungeonGen").apply { isDaemon = true }.start()
 	}
 
+	/**
+	 * Difficulty follows the number of players: alone the monsters have about 60% HP and hit half as hard,
+	 * with two players a bit less than full; from three players on HP grows with every player.
+	 */
 	private fun mobHp(type: Mob) = (type.hp * when (type) {
-		Mob.BOSS, Mob.MINIBOSS -> 0.5f + 0.5f * party
-		else -> 0.75f + 0.25f * party
+		Mob.BOSS, Mob.MINIBOSS -> when (party) { 1 -> 0.6f; 2 -> 0.85f; else -> 0.5f + 0.5f * party }
+		else -> when (party) { 1 -> 0.6f; 2 -> 1.0f; else -> 0.75f + 0.25f * party }
 	}).toInt().coerceAtLeast(1)
+
+	/** Damage monsters deal to you (falls into pits stay the same). */
+	private val damageScale get() = when (party) { 1 -> 0.5f; 2 -> 0.75f; else -> 1f }
 
 	private fun addMob(id: Int, type: Mob, x: Float) {
 		val d = dungeon ?: return
@@ -552,7 +559,7 @@ class DungeonScreen(val room: LobbyRoom) : GameScreen("Dungeon Run", room) {
 	private fun damage(n: Int, fell: Boolean = false) {
 		if (downed || phase != Phase.RUN) return
 		if (!fell && (invuln > 0 || castle > 0)) return
-		hp -= n
+		hp -= if (fell) n else Math.round(n * damageScale).coerceAtLeast(1)
 		invuln = 45
 		play(SoundEvents.PLAYER_HURT, 1f)
 		if (fell) {
@@ -858,7 +865,7 @@ class DungeonScreen(val room: LobbyRoom) : GameScreen("Dungeon Run", room) {
 
 	override fun draw(g: GuiGraphicsExtractor, mouseX: Int, mouseY: Int, partialTick: Float) {
 		simulate()
-		val top = header(g, "Dungeon Run", if (room.solo) "solo" else "${room.members.size} players")
+		val top = header(g, "Dungeon Run", (if (room.solo) "solo" else "${room.members.size} players") + if (party < 3) " · easier" else "")
 		if (phase == Phase.PICK) { drawPick(g, top, mouseX, mouseY); return }
 		val l = level
 		if (l == null) {
